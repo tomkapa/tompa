@@ -1,5 +1,4 @@
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-use rand::{rngs::OsRng, RngCore};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -29,8 +28,7 @@ fn bcrypt_cost() -> u32 {
 
 /// Generate a 32-byte random key and format it as `cpk_<base64url>`.
 fn generate_raw_key() -> String {
-    let mut bytes = [0u8; 32];
-    OsRng.fill_bytes(&mut bytes);
+    let bytes: [u8; 32] = rand::random();
     format!("cpk_{}", URL_SAFE_NO_PAD.encode(bytes))
 }
 

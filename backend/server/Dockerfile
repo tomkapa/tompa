@@ -7,7 +7,7 @@
 # Build context: ./backend  (the Cargo workspace root)
 
 # ── Stage 1: Install cargo-chef ───────────────────────────────────────────
-FROM rust:1.84-slim AS chef
+FROM rust:1.88-slim AS chef
 RUN cargo install cargo-chef --locked
 WORKDIR /app
 

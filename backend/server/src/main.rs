@@ -7,6 +7,8 @@ use server::{
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    shared::telemetry::init_tracing("server");
+
     let config = Config::from_env();
     let port = config.port;
 
@@ -24,7 +26,7 @@ async fn main() -> anyhow::Result<()> {
     let app = build_app(state);
 
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}")).await?;
-    println!("Server listening on port {port}");
+    tracing::info!(port, "Server listening");
     axum::serve(listener, app).await?;
 
     Ok(())

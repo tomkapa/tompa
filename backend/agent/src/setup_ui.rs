@@ -1,9 +1,9 @@
 use axum::{
+    Json, Router,
     extract::State,
-    http::{header, StatusCode, Uri},
+    http::{StatusCode, Uri, header},
     response::{IntoResponse, Response},
     routing::{get, post},
-    Json, Router,
 };
 use rust_embed::RustEmbed;
 use serde::{Deserialize, Serialize};

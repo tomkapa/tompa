@@ -10,7 +10,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command as StdCommand;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 use uuid::Uuid;

@@ -1,8 +1,8 @@
 use axum::{
-    extract::{Extension, Path, Query, State},
-    http::{header, HeaderValue, StatusCode},
-    response::{IntoResponse, Redirect, Response},
     Json,
+    extract::{Extension, Path, Query, State},
+    http::{HeaderValue, StatusCode, header},
+    response::{IntoResponse, Redirect, Response},
 };
 use serde::Deserialize;
 
@@ -70,7 +70,7 @@ pub(crate) async fn login(
         _ => {
             return Err(ApiError::BadRequest(format!(
                 "Unknown provider: {provider}"
-            )))
+            )));
         }
     };
 
@@ -110,7 +110,7 @@ pub(crate) async fn callback(
         _ => {
             return Err(ApiError::BadRequest(format!(
                 "Unknown provider: {provider}"
-            )))
+            )));
         }
     }
     .map_err(ApiError::Internal)?;

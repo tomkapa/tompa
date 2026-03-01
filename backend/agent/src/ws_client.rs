@@ -4,9 +4,8 @@ use anyhow::Result;
 use futures_util::{SinkExt, StreamExt};
 use tokio::sync::{mpsc, watch};
 use tokio_tungstenite::{
-    connect_async,
-    tungstenite::{client::IntoClientRequest, Message},
-    MaybeTlsStream, WebSocketStream,
+    MaybeTlsStream, WebSocketStream, connect_async,
+    tungstenite::{Message, client::IntoClientRequest},
 };
 use tracing::{error, info, warn};
 
@@ -93,7 +92,7 @@ impl WsClient {
                 incoming = read.next() => {
                     match incoming {
                         Some(Ok(Message::Text(text))) => {
-                            match serde_json::from_str::<ServerToContainer>(&text) {
+                            match serde_json::from_str::<ServerToContainer>(text.as_str()) {
                                 Ok(msg) => {
                                     if self.dispatch_tx
                                         .send(DispatchMessage::FromServer(msg))
@@ -131,7 +130,7 @@ impl WsClient {
                         Some(WsClientMessage::Send(msg)) => {
                             match serde_json::to_string(&msg) {
                                 Ok(text) => {
-                                    if write.send(Message::Text(text)).await.is_err() {
+                                    if write.send(Message::Text(text.into())).await.is_err() {
                                         error!("Failed to send WebSocket message");
                                         return;
                                     }
@@ -200,7 +199,7 @@ mod tests {
         let mut ws = accept_async(tcp).await.unwrap();
 
         let json = serde_json::to_string(&ServerToContainer::Ping).unwrap();
-        ws.send(TMsg::Text(json)).await.unwrap();
+        ws.send(TMsg::Text(json.into())).await.unwrap();
 
         let msg = tokio::time::timeout(Duration::from_secs(2), dispatch_rx.recv())
             .await
@@ -235,7 +234,7 @@ mod tests {
             .unwrap();
 
         if let TMsg::Text(text) = msg {
-            let parsed: ContainerToServer = serde_json::from_str(&text).unwrap();
+            let parsed: ContainerToServer = serde_json::from_str(text.as_str()).unwrap();
             assert!(matches!(parsed, ContainerToServer::Pong));
         } else {
             panic!("expected text message, got: {msg:?}");

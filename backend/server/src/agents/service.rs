@@ -56,7 +56,7 @@ pub async fn handle_message(state: &AppState, key_info: &ContainerKeyInfo, msg: 
     };
 
     if let Err(e) = result {
-        eprintln!("container message handler error: {e}");
+        tracing::error!("container message handler error: {e}");
     }
 }
 

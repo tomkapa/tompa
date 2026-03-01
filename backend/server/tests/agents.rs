@@ -14,6 +14,8 @@
 //! Run with:
 //!   BCRYPT_COST=4 DATABASE_URL=postgres://... cargo test --test agents
 
+mod common;
+
 use std::sync::Arc;
 
 use axum::{
@@ -21,8 +23,8 @@ use axum::{
     http::{Request, StatusCode},
     response::Response,
 };
-use jsonwebtoken::{encode, EncodingKey, Header};
-use serde_json::{json, Value};
+use jsonwebtoken::{EncodingKey, Header, encode};
+use serde_json::{Value, json};
 use sqlx::PgPool;
 use tower::ServiceExt;
 use uuid::Uuid;

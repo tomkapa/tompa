@@ -6,13 +6,13 @@ use std::{
 };
 
 use axum::{
+    Router,
     extract::{Extension, State},
     response::{
-        sse::{Event, KeepAlive, Sse},
         IntoResponse,
+        sse::{Event, KeepAlive, Sse},
     },
     routing::get,
-    Router,
 };
 use futures_util::{Stream, StreamExt};
 use tokio_stream::wrappers::UnboundedReceiverStream;

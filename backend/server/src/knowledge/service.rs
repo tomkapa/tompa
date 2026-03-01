@@ -5,8 +5,8 @@ use crate::{auth::middleware::set_org_context, errors::ApiError, state::AppState
 use super::{
     repo,
     types::{
-        is_valid_category, CreateKnowledgeRequest, KnowledgeError, KnowledgeResponse,
-        UpdateKnowledgeRequest,
+        CreateKnowledgeRequest, KnowledgeError, KnowledgeResponse, UpdateKnowledgeRequest,
+        is_valid_category,
     },
 };
 

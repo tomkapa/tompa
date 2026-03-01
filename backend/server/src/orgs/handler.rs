@@ -1,8 +1,8 @@
 use axum::{
+    Json, Router,
     extract::{Extension, State},
     http::StatusCode,
     routing::get,
-    Json, Router,
 };
 
 use crate::{

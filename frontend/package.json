@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "dump-spec": "cd ../backend && cargo run --bin generate-openapi > ../frontend/src/api/openapi.json",
-    "generate-api": "bun run dump-spec && orval --config orval.config.json"
+    "generate-api": "bun run dump-spec && orval --config orval.config.json",
+    "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

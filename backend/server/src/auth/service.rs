@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use chrono::Utc;
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use reqwest::Client;
 use serde::Deserialize;
 use sqlx::PgPool;

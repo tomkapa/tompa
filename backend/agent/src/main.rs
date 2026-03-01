@@ -23,17 +23,18 @@ use crate::{
     ws_client::WsClient,
 };
 
+#[cfg(test)]
+#[ctor::ctor]
+fn init_test_tracing() {
+    shared::telemetry::init_test_tracing();
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .init();
+    shared::telemetry::init_tracing("agent");
 
     let config = Config::load().map_err(|e| {
-        eprintln!("ERROR: {e}");
+        tracing::error!("Failed to load config: {e}");
         e
     })?;
 

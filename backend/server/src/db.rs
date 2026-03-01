@@ -1,4 +1,4 @@
-use sqlx::{postgres::PgPoolOptions, PgPool};
+use sqlx::{PgPool, postgres::PgPoolOptions};
 use uuid::Uuid;
 
 pub async fn create_pool(database_url: &str) -> PgPool {

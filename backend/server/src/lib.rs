@@ -14,9 +14,15 @@ pub mod state;
 pub mod story;
 pub mod task;
 
-use axum::{routing::get, Router};
+use axum::{Router, routing::get};
 
 use state::AppState;
+
+#[cfg(test)]
+#[ctor::ctor]
+fn init_test_tracing() {
+    shared::telemetry::init_test_tracing();
+}
 
 pub fn build_app(state: AppState) -> Router {
     Router::new()

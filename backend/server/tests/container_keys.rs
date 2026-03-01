@@ -5,6 +5,8 @@
 //!
 //! Set BCRYPT_COST=4 to keep bcrypt fast in tests (default is 12, ~300 ms/op).
 
+mod common;
+
 use std::sync::Arc;
 
 use axum::{
@@ -12,8 +14,8 @@ use axum::{
     http::{Request, StatusCode},
     response::Response,
 };
-use jsonwebtoken::{encode, EncodingKey, Header};
-use serde_json::{json, Value};
+use jsonwebtoken::{EncodingKey, Header, encode};
+use serde_json::{Value, json};
 use sqlx::PgPool;
 use tower::ServiceExt;
 use uuid::Uuid;
