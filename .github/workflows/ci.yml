@@ -59,6 +59,14 @@ jobs:
         env:
           SQLX_OFFLINE: "true"
 
+      - name: Install sqlx-cli
+        run: cargo install sqlx-cli --no-default-features --features postgres
+
+      - name: Run migrations
+        run: sqlx migrate run --source server/migrations
+        env:
+          DATABASE_URL: postgres://test:test@localhost:5432/test
+
       - name: test
         run: cargo test
         env:
