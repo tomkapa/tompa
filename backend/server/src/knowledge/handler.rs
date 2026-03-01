@@ -21,7 +21,10 @@ use super::{
 
 pub fn router(state: AppState) -> Router<AppState> {
     Router::new()
-        .route("/api/v1/knowledge", get(list_knowledge).post(create_knowledge))
+        .route(
+            "/api/v1/knowledge",
+            get(list_knowledge).post(create_knowledge),
+        )
         .route(
             "/api/v1/knowledge/:id",
             patch(update_knowledge).delete(delete_knowledge),

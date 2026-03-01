@@ -4,7 +4,6 @@
 /// A rank string sorts correctly with standard string comparison operators.
 ///
 /// Initial rank: "n" (near the middle of the alphabet, leaving space on both sides).
-
 use thiserror::Error;
 
 const MIN_CHAR: u8 = b'a';
@@ -50,7 +49,7 @@ fn key_after(lo: &str) -> Result<String, RankError> {
         Ok(String::from_utf8(result).unwrap())
     } else {
         // All characters are 'z' — append 'n' to produce a longer, larger key
-        Ok(format!("{}n", lo))
+        Ok(format!("{lo}n"))
     }
 }
 
@@ -165,7 +164,10 @@ mod tests {
         let lo = "m";
         let hi = "n";
         let mid = generate_key_between(Some(lo), Some(hi)).unwrap();
-        assert!(mid.as_str() > lo && mid.as_str() < hi, "mid={mid:?}, lo={lo:?}, hi={hi:?}");
+        assert!(
+            mid.as_str() > lo && mid.as_str() < hi,
+            "mid={mid:?}, lo={lo:?}, hi={hi:?}"
+        );
     }
 
     #[test]

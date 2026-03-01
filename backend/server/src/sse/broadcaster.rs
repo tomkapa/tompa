@@ -8,10 +8,24 @@ use crate::db::new_id;
 #[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
 pub enum SseEvent {
-    StoryUpdated { story_id: Uuid, fields: Vec<String> },
-    TaskUpdated { task_id: Uuid, story_id: Uuid, fields: Vec<String> },
-    NewQuestion { story_id: Uuid, task_id: Option<Uuid>, round_id: Uuid },
-    TaskCompleted { task_id: Uuid, story_id: Uuid },
+    StoryUpdated {
+        story_id: Uuid,
+        fields: Vec<String>,
+    },
+    TaskUpdated {
+        task_id: Uuid,
+        story_id: Uuid,
+        fields: Vec<String>,
+    },
+    NewQuestion {
+        story_id: Uuid,
+        task_id: Option<Uuid>,
+        round_id: Uuid,
+    },
+    TaskCompleted {
+        task_id: Uuid,
+        story_id: Uuid,
+    },
 }
 
 impl SseEvent {
@@ -41,7 +55,10 @@ impl SseBroadcaster {
     pub fn subscribe(&self, org_id: Uuid) -> (Uuid, UnboundedReceiver<SseEvent>) {
         let (tx, rx) = mpsc::unbounded_channel();
         let sender_id = new_id();
-        self.clients.entry(org_id).or_default().push((sender_id, tx));
+        self.clients
+            .entry(org_id)
+            .or_default()
+            .push((sender_id, tx));
         (sender_id, rx)
     }
 

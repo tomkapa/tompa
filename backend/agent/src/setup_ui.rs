@@ -38,7 +38,14 @@ impl SetupUi {
         rx: mpsc::Receiver<SetupUiMessage>,
         status_rx: watch::Receiver<ConnectionStatus>,
     ) -> Self {
-        Self { port, config_path, mode, _dispatch_tx: dispatch_tx, rx, status_rx }
+        Self {
+            port,
+            config_path,
+            mode,
+            _dispatch_tx: dispatch_tx,
+            rx,
+            status_rx,
+        }
     }
 
     pub async fn run(mut self) {
@@ -72,10 +79,8 @@ impl SetupUi {
             }
         });
 
-        // Drain the message channel to keep the actor pattern consistent.
-        while let Some(msg) = self.rx.recv().await {
-            match msg {}
-        }
+        // SetupUiMessage has no variants; block until all senders are dropped.
+        while self.rx.recv().await.is_some() {}
         info!("setup_ui shutting down");
     }
 }
@@ -159,10 +164,11 @@ async fn serve_asset(uri: Uri) -> Response {
         None => {
             // SPA fallback: unknown routes serve index.html
             match Assets::get("index.html") {
-                Some(file) => {
-                    ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], file.data)
-                        .into_response()
-                }
+                Some(file) => (
+                    [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+                    file.data,
+                )
+                    .into_response(),
                 None => StatusCode::NOT_FOUND.into_response(),
             }
         }

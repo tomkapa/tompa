@@ -9,11 +9,17 @@ pub struct ConnectionStatus {
 
 impl ConnectionStatus {
     pub fn connected() -> Self {
-        Self { connected: true, last_heartbeat: None }
+        Self {
+            connected: true,
+            last_heartbeat: None,
+        }
     }
 
     pub fn disconnected() -> Self {
-        Self { connected: false, last_heartbeat: None }
+        Self {
+            connected: false,
+            last_heartbeat: None,
+        }
     }
 
     pub fn record_heartbeat(&mut self) {

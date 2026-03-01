@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use sqlx::PgPool;
 
-use crate::{agents::registry::ConnectionRegistry, config::Config, sse::broadcaster::SseBroadcaster};
+use crate::{
+    agents::registry::ConnectionRegistry, config::Config, sse::broadcaster::SseBroadcaster,
+};
 
 #[derive(Clone)]
 pub struct AppState {

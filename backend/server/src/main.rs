@@ -1,12 +1,8 @@
 use std::sync::Arc;
 
 use server::{
-    agents::registry::DashMapRegistry,
-    build_app,
-    config::Config,
-    db,
-    sse::broadcaster::SseBroadcaster,
-    state::AppState,
+    agents::registry::DashMapRegistry, build_app, config::Config, db,
+    sse::broadcaster::SseBroadcaster, state::AppState,
 };
 
 #[tokio::main]

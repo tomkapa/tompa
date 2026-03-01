@@ -86,5 +86,9 @@ async fn sse_handler(
         })
         .boxed();
 
-    Sse::new(SseStream { inner, _guard: guard }).keep_alive(KeepAlive::default())
+    Sse::new(SseStream {
+        inner,
+        _guard: guard,
+    })
+    .keep_alive(KeepAlive::default())
 }

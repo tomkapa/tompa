@@ -38,16 +38,16 @@ pub async fn list_rounds(
     let mut conditions: Vec<String> = Vec::new();
     let mut idx = 1u32;
 
-    if let Some(_) = task_id {
+    if task_id.is_some() {
         conditions.push(format!("task_id = ${idx}"));
         idx += 1;
-    } else if let Some(_) = story_id {
+    } else if story_id.is_some() {
         conditions.push(format!("story_id = ${idx}"));
         idx += 1;
         conditions.push("task_id IS NULL".to_string());
     }
 
-    if let Some(_) = stage {
+    if stage.is_some() {
         conditions.push(format!("stage = ${idx}"));
     }
 
@@ -57,9 +57,8 @@ pub async fn list_rounds(
         conditions.join(" AND ")
     };
 
-    let sql = format!(
-        "SELECT {ROUND_COLUMNS} FROM qa_rounds WHERE {where_clause} ORDER BY round_number"
-    );
+    let sql =
+        format!("SELECT {ROUND_COLUMNS} FROM qa_rounds WHERE {where_clause} ORDER BY round_number");
 
     let mut q = sqlx::query_as::<_, QaRoundRow>(&sql);
     if let Some(tid) = task_id {

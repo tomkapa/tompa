@@ -32,13 +32,34 @@ use crate::prompts;
 #[derive(Debug)]
 pub enum ClaudeCodeMessage {
     // Q&A generation mode
-    StartGrooming { story_id: Uuid, context: GroomingContext },
-    StartPlanning { story_id: Uuid, context: PlanningContext },
-    AnswerReceived { round_id: Uuid, answers: Vec<Answer> },
+    StartGrooming {
+        story_id: Uuid,
+        context: GroomingContext,
+    },
+    StartPlanning {
+        story_id: Uuid,
+        context: PlanningContext,
+    },
+    AnswerReceived {
+        round_id: Uuid,
+        answers: Vec<Answer>,
+    },
     // Implementation mode
-    StartTask { task_id: Uuid, session_id: String, worktree: Option<PathBuf>, context: TaskContext },
-    ResumeTask { task_id: Uuid, session_id: String, worktree: Option<PathBuf>, answer: Answer },
-    CancelTask { task_id: Uuid },
+    StartTask {
+        task_id: Uuid,
+        session_id: String,
+        worktree: Option<PathBuf>,
+        context: TaskContext,
+    },
+    ResumeTask {
+        task_id: Uuid,
+        session_id: String,
+        worktree: Option<PathBuf>,
+        answer: Answer,
+    },
+    CancelTask {
+        task_id: Uuid,
+    },
 }
 
 // ── Internal types ────────────────────────────────────────────────────────────
@@ -62,9 +83,18 @@ enum QaSession {
 /// Results forwarded from implementation monitoring tasks back to the actor.
 #[derive(Debug)]
 enum ImplResult {
-    Paused { task_id: Uuid, question: PauseQuestion },
-    Completed { task_id: Uuid, commit_sha: String },
-    Failed { task_id: Uuid, error: String },
+    Paused {
+        task_id: Uuid,
+        question: PauseQuestion,
+    },
+    Completed {
+        task_id: Uuid,
+        commit_sha: String,
+    },
+    Failed {
+        task_id: Uuid,
+        error: String,
+    },
 }
 
 /// JSON envelope emitted by `claude --output-format json`.
@@ -171,11 +201,23 @@ impl ClaudeCode {
             ClaudeCodeMessage::AnswerReceived { round_id, answers } => {
                 self.handle_answer_received(round_id, answers).await;
             }
-            ClaudeCodeMessage::StartTask { task_id, session_id, worktree, context } => {
-                self.handle_start_task(task_id, session_id, worktree, context).await;
+            ClaudeCodeMessage::StartTask {
+                task_id,
+                session_id,
+                worktree,
+                context,
+            } => {
+                self.handle_start_task(task_id, session_id, worktree, context)
+                    .await;
             }
-            ClaudeCodeMessage::ResumeTask { task_id, session_id, worktree, answer } => {
-                self.handle_resume_task(task_id, session_id, worktree, answer).await;
+            ClaudeCodeMessage::ResumeTask {
+                task_id,
+                session_id,
+                worktree,
+                answer,
+            } => {
+                self.handle_resume_task(task_id, session_id, worktree, answer)
+                    .await;
             }
             ClaudeCodeMessage::CancelTask { task_id } => {
                 self.handle_cancel_task(task_id).await;
@@ -192,14 +234,21 @@ impl ClaudeCode {
             error!(%story_id, "failed to generate any grooming questions");
             return;
         }
-        let round = QaRoundContent { questions: questions.clone() };
+        let round = QaRoundContent {
+            questions: questions.clone(),
+        };
         self.active_qa = Some(QaSession::Grooming {
             story_id,
             context,
             decisions: vec![],
             last_questions: questions,
         });
-        self.send(DispatchMessage::QuestionsGenerated { story_id, task_id: None, round }).await;
+        self.send(DispatchMessage::QuestionsGenerated {
+            story_id,
+            task_id: None,
+            round,
+        })
+        .await;
     }
 
     async fn handle_start_planning(&mut self, story_id: Uuid, context: PlanningContext) {
@@ -214,8 +263,12 @@ impl ClaudeCode {
                     decisions: vec![],
                     last_questions: questions,
                 });
-                self.send(DispatchMessage::QuestionsGenerated { story_id, task_id: None, round })
-                    .await;
+                self.send(DispatchMessage::QuestionsGenerated {
+                    story_id,
+                    task_id: None,
+                    round,
+                })
+                .await;
             }
             Err(e) => error!(%story_id, %e, "planning question generation failed"),
         }
@@ -227,13 +280,35 @@ impl ClaudeCode {
             return;
         };
         match qa {
-            QaSession::Grooming { story_id, context, decisions, last_questions } => {
-                self.process_grooming_answers(story_id, context, decisions, last_questions, answers)
-                    .await;
+            QaSession::Grooming {
+                story_id,
+                context,
+                decisions,
+                last_questions,
+            } => {
+                self.process_grooming_answers(
+                    story_id,
+                    context,
+                    decisions,
+                    last_questions,
+                    answers,
+                )
+                .await;
             }
-            QaSession::Planning { story_id, context, decisions, last_questions } => {
-                self.process_planning_answers(story_id, context, decisions, last_questions, answers)
-                    .await;
+            QaSession::Planning {
+                story_id,
+                context,
+                decisions,
+                last_questions,
+            } => {
+                self.process_planning_answers(
+                    story_id,
+                    context,
+                    decisions,
+                    last_questions,
+                    answers,
+                )
+                .await;
             }
         }
     }
@@ -250,7 +325,10 @@ impl ClaudeCode {
 
         let convergence_prompt =
             prompts::convergence::build_convergence_prompt(&context.story_description, &decisions);
-        let sufficient = self.assess_convergence(&convergence_prompt).await.unwrap_or(false);
+        let sufficient = self
+            .assess_convergence(&convergence_prompt)
+            .await
+            .unwrap_or(false);
 
         if sufficient {
             info!(%story_id, "grooming convergence: SUFFICIENT");
@@ -264,7 +342,9 @@ impl ClaudeCode {
             info!(%story_id, "grooming convergence: CONTINUE");
             let questions = self.generate_grooming_questions(&context, &decisions).await;
             if !questions.is_empty() {
-                let round = QaRoundContent { questions: questions.clone() };
+                let round = QaRoundContent {
+                    questions: questions.clone(),
+                };
                 self.active_qa = Some(QaSession::Grooming {
                     story_id,
                     context,
@@ -293,7 +373,10 @@ impl ClaudeCode {
 
         let convergence_prompt =
             prompts::convergence::build_convergence_prompt(&context.story_description, &decisions);
-        let sufficient = self.assess_convergence(&convergence_prompt).await.unwrap_or(false);
+        let sufficient = self
+            .assess_convergence(&convergence_prompt)
+            .await
+            .unwrap_or(false);
 
         if sufficient {
             info!(%story_id, "planning convergence: SUFFICIENT — generating decomposition");
@@ -307,7 +390,8 @@ impl ClaudeCode {
                 prompts::task_decomposition::build_decomposition_prompt(&context, &decisions);
             match self.generate_decomposition(&decomp_prompt).await {
                 Ok(tasks) => {
-                    self.send(DispatchMessage::TaskDecompositionReady { story_id, tasks }).await;
+                    self.send(DispatchMessage::TaskDecompositionReady { story_id, tasks })
+                        .await;
                 }
                 Err(e) => error!(%story_id, %e, "task decomposition failed"),
             }
@@ -346,13 +430,20 @@ impl ClaudeCode {
     ) {
         info!(%task_id, %session_id, ?worktree, "starting implementation");
         let prompt = prompts::implementation::build_implementation_prompt(&context);
-        match self.spawn_impl(task_id, &session_id, &prompt, false, worktree.as_deref()).await {
+        match self
+            .spawn_impl(task_id, &session_id, &prompt, false, worktree.as_deref())
+            .await
+        {
             Ok(child) => {
                 self.active_impl.insert(task_id, child);
             }
             Err(e) => {
                 error!(%task_id, %e, "failed to start implementation");
-                self.send(DispatchMessage::TaskFailed { task_id, error: e.to_string() }).await;
+                self.send(DispatchMessage::TaskFailed {
+                    task_id,
+                    error: e.to_string(),
+                })
+                .await;
             }
         }
     }
@@ -368,7 +459,13 @@ impl ClaudeCode {
         // Previous process already exited at the decision point; clean up if still present.
         let _ = self.active_impl.remove(&task_id);
         match self
-            .spawn_impl(task_id, &session_id, &answer.selected_answer_text, true, worktree.as_deref())
+            .spawn_impl(
+                task_id,
+                &session_id,
+                &answer.selected_answer_text,
+                true,
+                worktree.as_deref(),
+            )
             .await
         {
             Ok(child) => {
@@ -376,7 +473,11 @@ impl ClaudeCode {
             }
             Err(e) => {
                 error!(%task_id, %e, "failed to resume implementation");
-                self.send(DispatchMessage::TaskFailed { task_id, error: e.to_string() }).await;
+                self.send(DispatchMessage::TaskFailed {
+                    task_id,
+                    error: e.to_string(),
+                })
+                .await;
             }
         }
     }
@@ -396,15 +497,24 @@ impl ClaudeCode {
         match result {
             ImplResult::Paused { task_id, question } => {
                 self.active_impl.remove(&task_id);
-                self.send(DispatchMessage::TaskPaused { task_id, question }).await;
+                self.send(DispatchMessage::TaskPaused { task_id, question })
+                    .await;
             }
-            ImplResult::Completed { task_id, commit_sha } => {
+            ImplResult::Completed {
+                task_id,
+                commit_sha,
+            } => {
                 self.active_impl.remove(&task_id);
-                self.send(DispatchMessage::TaskCompleted { task_id, commit_sha }).await;
+                self.send(DispatchMessage::TaskCompleted {
+                    task_id,
+                    commit_sha,
+                })
+                .await;
             }
             ImplResult::Failed { task_id, error } => {
                 self.active_impl.remove(&task_id);
-                self.send(DispatchMessage::TaskFailed { task_id, error }).await;
+                self.send(DispatchMessage::TaskFailed { task_id, error })
+                    .await;
             }
         }
     }
@@ -426,27 +536,30 @@ impl ClaudeCode {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(anyhow!("claude exited non-zero: {}", stderr));
+            return Err(anyhow!("claude exited non-zero: {stderr}"));
         }
 
         let stdout = String::from_utf8(output.stdout)?;
-        let envelope: ClaudeOutput = serde_json::from_str(&stdout).map_err(|e| {
-            anyhow!("bad claude envelope: {} — raw: {:.200}", e, stdout)
-        })?;
+        let envelope: ClaudeOutput = serde_json::from_str(&stdout)
+            .map_err(|e| anyhow!("bad claude envelope: {e} — raw: {stdout:.200}"))?;
 
         if envelope.is_error {
             return Err(anyhow!("claude error: {}", envelope.result));
         }
 
         let json = strip_markdown_fences(&envelope.result);
-        let raw: RawQaRound = serde_json::from_str(json).map_err(|e| {
-            anyhow!("bad QA JSON: {} — result: {:.200}", e, envelope.result)
-        })?;
+        let raw: RawQaRound = serde_json::from_str(json)
+            .map_err(|e| anyhow!("bad QA JSON: {} — result: {:.200}", e, envelope.result))?;
 
         let questions = raw
             .questions
             .into_iter()
-            .map(|q| Question { id: Uuid::now_v7(), text: q.text, domain: q.domain, options: q.options })
+            .map(|q| Question {
+                id: Uuid::now_v7(),
+                text: q.text,
+                domain: q.domain,
+                options: q.options,
+            })
             .collect();
 
         Ok(QaRoundContent { questions })
@@ -465,7 +578,7 @@ impl ClaudeCode {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(anyhow!("claude exited non-zero: {}", stderr));
+            return Err(anyhow!("claude exited non-zero: {stderr}"));
         }
 
         let stdout = String::from_utf8(output.stdout)?;
@@ -487,20 +600,20 @@ impl ClaudeCode {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(anyhow!("claude exited non-zero: {}", stderr));
+            return Err(anyhow!("claude exited non-zero: {stderr}"));
         }
 
         let stdout = String::from_utf8(output.stdout)?;
-        let envelope: ClaudeOutput = serde_json::from_str(&stdout)
-            .map_err(|e| anyhow!("bad claude envelope: {}", e))?;
+        let envelope: ClaudeOutput =
+            serde_json::from_str(&stdout).map_err(|e| anyhow!("bad claude envelope: {e}"))?;
 
         if envelope.is_error {
             return Err(anyhow!("claude error: {}", envelope.result));
         }
 
         let json = strip_markdown_fences(&envelope.result);
-        let raw: RawDecomposition = serde_json::from_str(json)
-            .map_err(|e| anyhow!("bad decomposition JSON: {}", e))?;
+        let raw: RawDecomposition =
+            serde_json::from_str(json).map_err(|e| anyhow!("bad decomposition JSON: {e}"))?;
 
         let tasks = raw
             .tasks
@@ -551,9 +664,11 @@ impl ClaudeCode {
         if let Some(dir) = worktree {
             cmd.current_dir(dir);
         }
-        cmd.arg(prompt).stdout(Stdio::piped()).stderr(Stdio::piped());
+        cmd.arg(prompt)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
 
-        let mut child = cmd.spawn().map_err(|e| anyhow!("spawn failed: {}", e))?;
+        let mut child = cmd.spawn().map_err(|e| anyhow!("spawn failed: {e}"))?;
         let stdout: ChildStdout = child.stdout.take().expect("stdout piped");
 
         tokio::spawn(monitor_impl_stdout(
@@ -606,7 +721,9 @@ async fn monitor_impl_stdout(
                     awaiting_decision_json = false;
                     match serde_json::from_str::<PauseQuestion>(&line) {
                         Ok(question) => {
-                            let _ = monitor_tx.send(ImplResult::Paused { task_id, question }).await;
+                            let _ = monitor_tx
+                                .send(ImplResult::Paused { task_id, question })
+                                .await;
                             return;
                         }
                         Err(e) => {
@@ -618,14 +735,20 @@ async fn monitor_impl_stdout(
 
                 if let Some(sha) = line.strip_prefix("[COMPLETED]") {
                     let _ = monitor_tx
-                        .send(ImplResult::Completed { task_id, commit_sha: sha.trim().into() })
+                        .send(ImplResult::Completed {
+                            task_id,
+                            commit_sha: sha.trim().into(),
+                        })
                         .await;
                     return;
                 }
 
                 // Regular progress output.
                 let _ = dispatch_tx
-                    .send(DispatchMessage::StatusUpdate { task_id, text: line })
+                    .send(DispatchMessage::StatusUpdate {
+                        task_id,
+                        text: line,
+                    })
                     .await;
             }
             Ok(None) => {
@@ -640,7 +763,10 @@ async fn monitor_impl_stdout(
             }
             Err(e) => {
                 let _ = monitor_tx
-                    .send(ImplResult::Failed { task_id, error: format!("stdout read error: {}", e) })
+                    .send(ImplResult::Failed {
+                        task_id,
+                        error: format!("stdout read error: {e}"),
+                    })
                     .await;
                 return;
             }
@@ -733,7 +859,9 @@ mod tests {
     fn sufficient_returns_true() {
         assert!(parse_convergence_response("SUFFICIENT"));
         assert!(parse_convergence_response("  SUFFICIENT  "));
-        assert!(parse_convergence_response("Yes, I have enough info. SUFFICIENT."));
+        assert!(parse_convergence_response(
+            "Yes, I have enough info. SUFFICIENT."
+        ));
     }
 
     #[test]
@@ -746,7 +874,12 @@ mod tests {
     // ── append_decisions ─────────────────────────────────────────────────────
 
     fn make_question(id: Uuid, text: &str, domain: &str) -> Question {
-        Question { id, text: text.into(), domain: domain.into(), options: vec![] }
+        Question {
+            id,
+            text: text.into(),
+            domain: domain.into(),
+            options: vec![],
+        }
     }
 
     fn make_answer(question_id: Uuid, answer_text: &str) -> Answer {
@@ -786,8 +919,10 @@ mod tests {
     fn multiple_answers_accumulated() {
         let id1 = Uuid::now_v7();
         let id2 = Uuid::now_v7();
-        let questions =
-            vec![make_question(id1, "DB type?", "planning"), make_question(id2, "Cache?", "planning")];
+        let questions = vec![
+            make_question(id1, "DB type?", "planning"),
+            make_question(id2, "Cache?", "planning"),
+        ];
         let answers = vec![make_answer(id1, "PostgreSQL"), make_answer(id2, "Redis")];
         let mut decisions = vec![];
         append_decisions(&mut decisions, &questions, &answers);
@@ -842,7 +977,9 @@ mod tests {
             .await;
 
         let msg = dispatch_rx.try_recv().unwrap();
-        assert!(matches!(msg, DispatchMessage::TaskCompleted { commit_sha, .. } if commit_sha == "abc123"));
+        assert!(
+            matches!(msg, DispatchMessage::TaskCompleted { commit_sha, .. } if commit_sha == "abc123")
+        );
     }
 
     #[tokio::test]

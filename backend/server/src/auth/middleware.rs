@@ -24,11 +24,10 @@ pub async fn require_auth(
     mut request: Request,
     next: Next,
 ) -> Result<Response, ApiError> {
-    let token = extract_session_cookie(request.headers())
-        .ok_or(ApiError::Unauthorized)?;
+    let token = extract_session_cookie(request.headers()).ok_or(ApiError::Unauthorized)?;
 
-    let claims = validate_jwt(&token, &state.config.jwt_secret)
-        .map_err(|_| ApiError::Unauthorized)?;
+    let claims =
+        validate_jwt(&token, &state.config.jwt_secret).map_err(|_| ApiError::Unauthorized)?;
 
     request.extensions_mut().insert(AuthContext {
         user_id: claims.sub,

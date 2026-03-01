@@ -67,6 +67,7 @@ pub async fn get_task(
 }
 
 /// Insert a new task.
+#[allow(clippy::too_many_arguments)]
 pub async fn create_task(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     org_id: Uuid,
@@ -97,6 +98,7 @@ pub async fn create_task(
 }
 
 /// Partial update via COALESCE semantics — None fields are left unchanged.
+#[allow(clippy::too_many_arguments)]
 pub async fn update_task(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     id: Uuid,

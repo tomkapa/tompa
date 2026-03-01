@@ -2,11 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use uuid::Uuid;
 
-use crate::{
-    auth::middleware::set_org_context,
-    errors::ApiError,
-    state::AppState,
-};
+use crate::{auth::middleware::set_org_context, errors::ApiError, state::AppState};
 
 use shared::enums::TaskState;
 
@@ -88,11 +84,7 @@ fn validate_state_transition(from: &str, to: &str) -> Result<(), ApiError> {
 
 /// DFS cycle detection. Returns `true` if adding edge (task_id → depends_on)
 /// would create a cycle in the existing edge set.
-fn would_create_cycle(
-    edges: &[(Uuid, Uuid)],
-    task_id: Uuid,
-    depends_on: Uuid,
-) -> bool {
+fn would_create_cycle(edges: &[(Uuid, Uuid)], task_id: Uuid, depends_on: Uuid) -> bool {
     // If they're the same node it's a self-loop — always a cycle.
     if task_id == depends_on {
         return true;
@@ -152,11 +144,7 @@ pub async fn list_tasks(
     Ok(result)
 }
 
-pub async fn get_task(
-    state: &AppState,
-    org_id: Uuid,
-    id: Uuid,
-) -> Result<TaskResponse, ApiError> {
+pub async fn get_task(state: &AppState, org_id: Uuid, id: Uuid) -> Result<TaskResponse, ApiError> {
     let mut tx = state.pool.begin().await?;
     set_org_context(&mut tx, org_id).await?;
 
@@ -189,12 +177,11 @@ pub async fn create_task(
     set_org_context(&mut tx, org_id).await?;
 
     // Verify the story exists in this org (RLS ensures org scoping)
-    let story_exists: Option<(Uuid,)> = sqlx::query_as(
-        "SELECT id FROM stories WHERE id = $1 AND deleted_at IS NULL",
-    )
-    .bind(req.story_id)
-    .fetch_optional(&mut *tx)
-    .await?;
+    let story_exists: Option<(Uuid,)> =
+        sqlx::query_as("SELECT id FROM stories WHERE id = $1 AND deleted_at IS NULL")
+            .bind(req.story_id)
+            .fetch_optional(&mut *tx)
+            .await?;
 
     if story_exists.is_none() {
         return Err(TaskError::StoryNotFound.into());
@@ -252,11 +239,7 @@ pub async fn update_task(
     Ok(to_task_response(updated, deps))
 }
 
-pub async fn delete_task(
-    state: &AppState,
-    org_id: Uuid,
-    id: Uuid,
-) -> Result<(), ApiError> {
+pub async fn delete_task(state: &AppState, org_id: Uuid, id: Uuid) -> Result<(), ApiError> {
     let mut tx = state.pool.begin().await?;
     set_org_context(&mut tx, org_id).await?;
 
@@ -269,11 +252,7 @@ pub async fn delete_task(
     Ok(())
 }
 
-pub async fn mark_done(
-    state: &AppState,
-    org_id: Uuid,
-    id: Uuid,
-) -> Result<TaskResponse, ApiError> {
+pub async fn mark_done(state: &AppState, org_id: Uuid, id: Uuid) -> Result<TaskResponse, ApiError> {
     let mut tx = state.pool.begin().await?;
     set_org_context(&mut tx, org_id).await?;
 
@@ -359,11 +338,7 @@ pub async fn create_dependency(
     })
 }
 
-pub async fn delete_dependency(
-    state: &AppState,
-    org_id: Uuid,
-    id: Uuid,
-) -> Result<(), ApiError> {
+pub async fn delete_dependency(state: &AppState, org_id: Uuid, id: Uuid) -> Result<(), ApiError> {
     let mut tx = state.pool.begin().await?;
     set_org_context(&mut tx, org_id).await?;
 

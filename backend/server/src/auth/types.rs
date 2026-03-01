@@ -5,9 +5,9 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthClaims {
-    pub sub: Uuid,     // user_id
+    pub sub: Uuid, // user_id
     pub org_id: Uuid,
-    pub role: String,  // "owner", "admin", "member"
+    pub role: String, // "owner", "admin", "member"
     pub exp: i64,
     pub iat: i64,
 }

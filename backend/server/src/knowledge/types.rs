@@ -16,8 +16,7 @@ pub enum KnowledgeError {
     ContentRequired,
 }
 
-const VALID_CATEGORIES: &[&str] =
-    &["convention", "adr", "api_doc", "design_system", "custom"];
+const VALID_CATEGORIES: &[&str] = &["convention", "adr", "api_doc", "design_system", "custom"];
 
 pub fn is_valid_category(cat: &str) -> bool {
     VALID_CATEGORIES.contains(&cat)

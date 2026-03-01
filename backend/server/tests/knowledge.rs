@@ -21,10 +21,10 @@ use uuid::Uuid;
 
 use server::{
     agents::registry::DashMapRegistry,
-    sse::broadcaster::SseBroadcaster,
     auth::{service::make_claims, types::AuthClaims},
     build_app,
     config::Config,
+    sse::broadcaster::SseBroadcaster,
     state::AppState,
 };
 
@@ -73,7 +73,7 @@ async fn seed_user(pool: &PgPool) -> Uuid {
         "#,
     )
     .bind(id)
-    .bind(format!("user-{}@test.example", id))
+    .bind(format!("user-{id}@test.example"))
     .bind("Test User")
     .bind(id.to_string())
     .execute(pool)
@@ -90,29 +90,25 @@ async fn seed_org(pool: &PgPool, user_id: Uuid, name: &str) -> Uuid {
         .execute(pool)
         .await
         .unwrap();
-    sqlx::query(
-        "INSERT INTO org_members (id, org_id, user_id, role) VALUES ($1, $2, $3, 'owner')",
-    )
-    .bind(Uuid::now_v7())
-    .bind(org_id)
-    .bind(user_id)
-    .execute(pool)
-    .await
-    .unwrap();
+    sqlx::query("INSERT INTO org_members (id, org_id, user_id, role) VALUES ($1, $2, $3, 'owner')")
+        .bind(Uuid::now_v7())
+        .bind(org_id)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .unwrap();
     org_id
 }
 
 async fn seed_project(pool: &PgPool, org_id: Uuid) -> Uuid {
     let id = Uuid::now_v7();
-    sqlx::query(
-        "INSERT INTO projects (id, org_id, name) VALUES ($1, $2, $3)",
-    )
-    .bind(id)
-    .bind(org_id)
-    .bind("Test Project")
-    .execute(pool)
-    .await
-    .unwrap();
+    sqlx::query("INSERT INTO projects (id, org_id, name) VALUES ($1, $2, $3)")
+        .bind(id)
+        .bind(org_id)
+        .bind("Test Project")
+        .execute(pool)
+        .await
+        .unwrap();
     id
 }
 
@@ -276,7 +272,12 @@ async fn list_returns_correct_hierarchy(pool: PgPool) {
             body["story_id"] = json!(s);
         }
         app.clone()
-            .oneshot(json_request("POST", "/api/v1/knowledge", &token, Some(body)))
+            .oneshot(json_request(
+                "POST",
+                "/api/v1/knowledge",
+                &token,
+                Some(body),
+            ))
             .await
             .unwrap();
     }

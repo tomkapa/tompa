@@ -1,7 +1,10 @@
 use shared::enums::KnowledgeCategory;
 use shared::types::{KnowledgeEntry, PlanningContext, QaDecision};
 
-pub fn build_planning_prompt(context: &PlanningContext, previous_decisions: &[QaDecision]) -> String {
+pub fn build_planning_prompt(
+    context: &PlanningContext,
+    previous_decisions: &[QaDecision],
+) -> String {
     let adrs = filter_knowledge(&context.knowledge, KnowledgeCategory::Adr);
     let api_docs = filter_knowledge(&context.knowledge, KnowledgeCategory::ApiDoc);
     let grooming = fmt_decisions(&context.grooming_decisions);
@@ -46,8 +49,16 @@ Respond ONLY with valid JSON — no markdown fences, no extra text:
     }}
   ]
 }}"#,
-        adrs = if adrs.is_empty() { "None documented.".into() } else { adrs },
-        api_docs = if api_docs.is_empty() { "None documented.".into() } else { api_docs },
+        adrs = if adrs.is_empty() {
+            "None documented.".into()
+        } else {
+            adrs
+        },
+        api_docs = if api_docs.is_empty() {
+            "None documented.".into()
+        } else {
+            api_docs
+        },
         codebase = if context.codebase_context.is_empty() {
             "No codebase context available.".into()
         } else {
@@ -74,7 +85,12 @@ fn fmt_decisions(decisions: &[QaDecision]) -> String {
     }
     decisions
         .iter()
-        .map(|d| format!("- [{}] Q: {} → A: {}", d.domain, d.question_text, d.answer_text))
+        .map(|d| {
+            format!(
+                "- [{}] Q: {} → A: {}",
+                d.domain, d.question_text, d.answer_text
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n")
 }

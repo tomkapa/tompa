@@ -14,12 +14,10 @@ pub struct Config {
 
 impl Config {
     pub fn load() -> Result<Self> {
-        let path =
-            std::env::var("CONFIG_PATH").unwrap_or_else(|_| "config.toml".to_string());
+        let path = std::env::var("CONFIG_PATH").unwrap_or_else(|_| "config.toml".to_string());
         let content = std::fs::read_to_string(&path)
             .with_context(|| format!("Config file not found or unreadable: {path}"))?;
-        let config: Config =
-            toml::from_str(&content).context("Failed to parse config.toml")?;
+        let config: Config = toml::from_str(&content).context("Failed to parse config.toml")?;
         Ok(config)
     }
 }

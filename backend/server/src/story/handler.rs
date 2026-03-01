@@ -15,8 +15,7 @@ use crate::{
 use super::{
     service,
     types::{
-        CreateStoryRequest, ListStoriesParams, RankUpdateRequest, StoryResponse,
-        UpdateStoryRequest,
+        CreateStoryRequest, ListStoriesParams, RankUpdateRequest, StoryResponse, UpdateStoryRequest,
     },
 };
 

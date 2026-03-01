@@ -1,11 +1,7 @@
 use chrono::Utc;
 use uuid::Uuid;
 
-use crate::{
-    enums::*,
-    messages::*,
-    types::*,
-};
+use crate::{enums::*, messages::*, types::*};
 
 fn round_trip<T: serde::Serialize + serde::de::DeserializeOwned + std::fmt::Debug + PartialEq>(
     value: &T,
@@ -143,7 +139,10 @@ fn server_to_container_start_grooming() {
     };
     let json = serde_json::to_string(&msg).unwrap();
     let back: ServerToContainer = serde_json::from_str(&json).unwrap();
-    assert_eq!(serde_json::to_value(&msg).unwrap(), serde_json::to_value(&back).unwrap());
+    assert_eq!(
+        serde_json::to_value(&msg).unwrap(),
+        serde_json::to_value(&back).unwrap()
+    );
 }
 
 #[test]
@@ -163,7 +162,10 @@ fn server_to_container_start_planning() {
     };
     let json = serde_json::to_string(&msg).unwrap();
     let back: ServerToContainer = serde_json::from_str(&json).unwrap();
-    assert_eq!(serde_json::to_value(&msg).unwrap(), serde_json::to_value(&back).unwrap());
+    assert_eq!(
+        serde_json::to_value(&msg).unwrap(),
+        serde_json::to_value(&back).unwrap()
+    );
 }
 
 #[test]
@@ -174,7 +176,10 @@ fn server_to_container_answer_received() {
     };
     let json = serde_json::to_string(&msg).unwrap();
     let back: ServerToContainer = serde_json::from_str(&json).unwrap();
-    assert_eq!(serde_json::to_value(&msg).unwrap(), serde_json::to_value(&back).unwrap());
+    assert_eq!(
+        serde_json::to_value(&msg).unwrap(),
+        serde_json::to_value(&back).unwrap()
+    );
 }
 
 #[test]
@@ -192,7 +197,10 @@ fn server_to_container_start_task() {
     };
     let json = serde_json::to_string(&msg).unwrap();
     let back: ServerToContainer = serde_json::from_str(&json).unwrap();
-    assert_eq!(serde_json::to_value(&msg).unwrap(), serde_json::to_value(&back).unwrap());
+    assert_eq!(
+        serde_json::to_value(&msg).unwrap(),
+        serde_json::to_value(&back).unwrap()
+    );
 }
 
 #[test]
@@ -204,15 +212,23 @@ fn server_to_container_resume_task() {
     };
     let json = serde_json::to_string(&msg).unwrap();
     let back: ServerToContainer = serde_json::from_str(&json).unwrap();
-    assert_eq!(serde_json::to_value(&msg).unwrap(), serde_json::to_value(&back).unwrap());
+    assert_eq!(
+        serde_json::to_value(&msg).unwrap(),
+        serde_json::to_value(&back).unwrap()
+    );
 }
 
 #[test]
 fn server_to_container_cancel_task() {
-    let msg = ServerToContainer::CancelTask { task_id: Uuid::now_v7() };
+    let msg = ServerToContainer::CancelTask {
+        task_id: Uuid::now_v7(),
+    };
     let json = serde_json::to_string(&msg).unwrap();
     let back: ServerToContainer = serde_json::from_str(&json).unwrap();
-    assert_eq!(serde_json::to_value(&msg).unwrap(), serde_json::to_value(&back).unwrap());
+    assert_eq!(
+        serde_json::to_value(&msg).unwrap(),
+        serde_json::to_value(&back).unwrap()
+    );
 }
 
 #[test]
@@ -220,7 +236,10 @@ fn server_to_container_ping() {
     let msg = ServerToContainer::Ping;
     let json = serde_json::to_string(&msg).unwrap();
     let back: ServerToContainer = serde_json::from_str(&json).unwrap();
-    assert_eq!(serde_json::to_value(&msg).unwrap(), serde_json::to_value(&back).unwrap());
+    assert_eq!(
+        serde_json::to_value(&msg).unwrap(),
+        serde_json::to_value(&back).unwrap()
+    );
 }
 
 // ── ContainerToServer round-trips ─────────────────────────────────────────────
@@ -234,7 +253,10 @@ fn container_to_server_question_batch() {
     };
     let json = serde_json::to_string(&msg).unwrap();
     let back: ContainerToServer = serde_json::from_str(&json).unwrap();
-    assert_eq!(serde_json::to_value(&msg).unwrap(), serde_json::to_value(&back).unwrap());
+    assert_eq!(
+        serde_json::to_value(&msg).unwrap(),
+        serde_json::to_value(&back).unwrap()
+    );
 }
 
 #[test]
@@ -246,7 +268,10 @@ fn container_to_server_question_batch_no_task() {
     };
     let json = serde_json::to_string(&msg).unwrap();
     let back: ContainerToServer = serde_json::from_str(&json).unwrap();
-    assert_eq!(serde_json::to_value(&msg).unwrap(), serde_json::to_value(&back).unwrap());
+    assert_eq!(
+        serde_json::to_value(&msg).unwrap(),
+        serde_json::to_value(&back).unwrap()
+    );
 }
 
 #[test]
@@ -263,7 +288,10 @@ fn container_to_server_task_decomposition() {
     };
     let json = serde_json::to_string(&msg).unwrap();
     let back: ContainerToServer = serde_json::from_str(&json).unwrap();
-    assert_eq!(serde_json::to_value(&msg).unwrap(), serde_json::to_value(&back).unwrap());
+    assert_eq!(
+        serde_json::to_value(&msg).unwrap(),
+        serde_json::to_value(&back).unwrap()
+    );
 }
 
 #[test]
@@ -278,7 +306,10 @@ fn container_to_server_task_paused() {
     };
     let json = serde_json::to_string(&msg).unwrap();
     let back: ContainerToServer = serde_json::from_str(&json).unwrap();
-    assert_eq!(serde_json::to_value(&msg).unwrap(), serde_json::to_value(&back).unwrap());
+    assert_eq!(
+        serde_json::to_value(&msg).unwrap(),
+        serde_json::to_value(&back).unwrap()
+    );
 }
 
 #[test]
@@ -289,7 +320,10 @@ fn container_to_server_task_completed() {
     };
     let json = serde_json::to_string(&msg).unwrap();
     let back: ContainerToServer = serde_json::from_str(&json).unwrap();
-    assert_eq!(serde_json::to_value(&msg).unwrap(), serde_json::to_value(&back).unwrap());
+    assert_eq!(
+        serde_json::to_value(&msg).unwrap(),
+        serde_json::to_value(&back).unwrap()
+    );
 }
 
 #[test]
@@ -300,7 +334,10 @@ fn container_to_server_task_failed() {
     };
     let json = serde_json::to_string(&msg).unwrap();
     let back: ContainerToServer = serde_json::from_str(&json).unwrap();
-    assert_eq!(serde_json::to_value(&msg).unwrap(), serde_json::to_value(&back).unwrap());
+    assert_eq!(
+        serde_json::to_value(&msg).unwrap(),
+        serde_json::to_value(&back).unwrap()
+    );
 }
 
 #[test]
@@ -311,7 +348,10 @@ fn container_to_server_status_update() {
     };
     let json = serde_json::to_string(&msg).unwrap();
     let back: ContainerToServer = serde_json::from_str(&json).unwrap();
-    assert_eq!(serde_json::to_value(&msg).unwrap(), serde_json::to_value(&back).unwrap());
+    assert_eq!(
+        serde_json::to_value(&msg).unwrap(),
+        serde_json::to_value(&back).unwrap()
+    );
 }
 
 #[test]
@@ -319,5 +359,8 @@ fn container_to_server_pong() {
     let msg = ContainerToServer::Pong;
     let json = serde_json::to_string(&msg).unwrap();
     let back: ContainerToServer = serde_json::from_str(&json).unwrap();
-    assert_eq!(serde_json::to_value(&msg).unwrap(), serde_json::to_value(&back).unwrap());
+    assert_eq!(
+        serde_json::to_value(&msg).unwrap(),
+        serde_json::to_value(&back).unwrap()
+    );
 }

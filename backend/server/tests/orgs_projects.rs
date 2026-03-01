@@ -21,10 +21,10 @@ use uuid::Uuid;
 
 use server::{
     agents::registry::DashMapRegistry,
-    sse::broadcaster::SseBroadcaster,
     auth::{service::make_claims, types::AuthClaims},
     build_app,
     config::Config,
+    sse::broadcaster::SseBroadcaster,
     state::AppState,
 };
 
@@ -77,7 +77,7 @@ async fn seed_user(pool: &PgPool) -> Uuid {
         "#,
     )
     .bind(id)
-    .bind(format!("user-{}@test.example", id))
+    .bind(format!("user-{id}@test.example"))
     .bind("Test User")
     .bind(id.to_string())
     .execute(pool)
@@ -95,20 +95,20 @@ async fn seed_org(pool: &PgPool, user_id: Uuid, name: &str) -> Uuid {
         .await
         .unwrap();
     let member_id = Uuid::now_v7();
-    sqlx::query(
-        "INSERT INTO org_members (id, org_id, user_id, role) VALUES ($1, $2, $3, 'owner')",
-    )
-    .bind(member_id)
-    .bind(org_id)
-    .bind(user_id)
-    .execute(pool)
-    .await
-    .unwrap();
+    sqlx::query("INSERT INTO org_members (id, org_id, user_id, role) VALUES ($1, $2, $3, 'owner')")
+        .bind(member_id)
+        .bind(org_id)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .unwrap();
     org_id
 }
 
 fn json_request(method: &str, uri: &str, token: &str, body: Option<Value>) -> Request<Body> {
-    let body_bytes = body.map(|v| serde_json::to_vec(&v).unwrap()).unwrap_or_default();
+    let body_bytes = body
+        .map(|v| serde_json::to_vec(&v).unwrap())
+        .unwrap_or_default();
     Request::builder()
         .method(method)
         .uri(uri)

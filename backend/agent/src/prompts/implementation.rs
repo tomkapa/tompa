@@ -67,7 +67,12 @@ fn fmt_decisions(decisions: &[QaDecision]) -> String {
     }
     decisions
         .iter()
-        .map(|d| format!("- [{}] Q: {} → A: {}", d.domain, d.question_text, d.answer_text))
+        .map(|d| {
+            format!(
+                "- [{}] Q: {} → A: {}",
+                d.domain, d.question_text, d.answer_text
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n")
 }

@@ -20,11 +20,11 @@ use uuid::Uuid;
 
 use server::{
     agents::registry::DashMapRegistry,
-    sse::broadcaster::SseBroadcaster,
     auth::{service::make_claims, types::AuthClaims},
     build_app,
     config::Config,
     container_keys::service::verify_api_key,
+    sse::broadcaster::SseBroadcaster,
     state::AppState,
 };
 
@@ -73,7 +73,7 @@ async fn seed_user(pool: &PgPool) -> Uuid {
          VALUES ($1, $2, $3, 'test', $4)",
     )
     .bind(id)
-    .bind(format!("u-{}@t.example", id))
+    .bind(format!("u-{id}@t.example"))
     .bind("Test User")
     .bind(id.to_string())
     .execute(pool)
@@ -91,29 +91,25 @@ async fn seed_org(pool: &PgPool, user_id: Uuid) -> Uuid {
         .await
         .unwrap();
     let mid = Uuid::now_v7();
-    sqlx::query(
-        "INSERT INTO org_members (id, org_id, user_id, role) VALUES ($1, $2, $3, 'owner')",
-    )
-    .bind(mid)
-    .bind(org_id)
-    .bind(user_id)
-    .execute(pool)
-    .await
-    .unwrap();
+    sqlx::query("INSERT INTO org_members (id, org_id, user_id, role) VALUES ($1, $2, $3, 'owner')")
+        .bind(mid)
+        .bind(org_id)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .unwrap();
     org_id
 }
 
 async fn seed_project(pool: &PgPool, org_id: Uuid) -> Uuid {
     let pid = Uuid::now_v7();
-    sqlx::query(
-        "INSERT INTO projects (id, org_id, name) VALUES ($1, $2, $3)",
-    )
-    .bind(pid)
-    .bind(org_id)
-    .bind("Test Project")
-    .execute(pool)
-    .await
-    .unwrap();
+    sqlx::query("INSERT INTO projects (id, org_id, name) VALUES ($1, $2, $3)")
+        .bind(pid)
+        .bind(org_id)
+        .bind("Test Project")
+        .execute(pool)
+        .await
+        .unwrap();
     pid
 }
 
@@ -398,7 +394,9 @@ async fn verify_api_key_success_and_failure(pool: PgPool) {
     let key_id: Uuid = body["id"].as_str().unwrap().parse().unwrap();
 
     // Correct key → success
-    let info = verify_api_key(&pool, &raw_key).await.expect("verify should succeed");
+    let info = verify_api_key(&pool, &raw_key)
+        .await
+        .expect("verify should succeed");
     assert_eq!(info.key_id, key_id);
     assert_eq!(info.org_id, org_id);
     assert_eq!(info.project_id, project_id);
@@ -406,7 +404,9 @@ async fn verify_api_key_success_and_failure(pool: PgPool) {
 
     // Wrong key → error
     assert!(
-        verify_api_key(&pool, "cpk_wrongwrongwrongwrongwrongwrongwrongwrong").await.is_err(),
+        verify_api_key(&pool, "cpk_wrongwrongwrongwrongwrongwrongwrongwrong")
+            .await
+            .is_err(),
         "wrong key must not verify"
     );
 }

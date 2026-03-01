@@ -21,10 +21,10 @@ use uuid::Uuid;
 
 use server::{
     agents::registry::DashMapRegistry,
-    sse::broadcaster::SseBroadcaster,
     auth::{service::make_claims, types::AuthClaims},
     build_app,
     config::Config,
+    sse::broadcaster::SseBroadcaster,
     state::AppState,
 };
 
@@ -54,7 +54,10 @@ fn test_state(pool: PgPool) -> AppState {
 
 fn test_jwt(user_id: Uuid, org_id: Uuid) -> String {
     let claims = make_claims(user_id, org_id, "owner");
-    let claims = AuthClaims { exp: 9_999_999_999, ..claims };
+    let claims = AuthClaims {
+        exp: 9_999_999_999,
+        ..claims
+    };
     encode(
         &Header::default(),
         &claims,
@@ -70,7 +73,7 @@ async fn seed_user(pool: &PgPool) -> Uuid {
          VALUES ($1, $2, $3, 'test', $4)",
     )
     .bind(id)
-    .bind(format!("user-{}@test.example", id))
+    .bind(format!("user-{id}@test.example"))
     .bind("Test User")
     .bind(id.to_string())
     .execute(pool)
@@ -87,29 +90,25 @@ async fn seed_org(pool: &PgPool, user_id: Uuid) -> Uuid {
         .execute(pool)
         .await
         .unwrap();
-    sqlx::query(
-        "INSERT INTO org_members (id, org_id, user_id, role) VALUES ($1, $2, $3, 'owner')",
-    )
-    .bind(Uuid::now_v7())
-    .bind(org_id)
-    .bind(user_id)
-    .execute(pool)
-    .await
-    .unwrap();
+    sqlx::query("INSERT INTO org_members (id, org_id, user_id, role) VALUES ($1, $2, $3, 'owner')")
+        .bind(Uuid::now_v7())
+        .bind(org_id)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .unwrap();
     org_id
 }
 
 async fn seed_project(pool: &PgPool, org_id: Uuid) -> Uuid {
     let id = Uuid::now_v7();
-    sqlx::query(
-        "INSERT INTO projects (id, org_id, name) VALUES ($1, $2, $3)",
-    )
-    .bind(id)
-    .bind(org_id)
-    .bind("Test Project")
-    .execute(pool)
-    .await
-    .unwrap();
+    sqlx::query("INSERT INTO projects (id, org_id, name) VALUES ($1, $2, $3)")
+        .bind(id)
+        .bind(org_id)
+        .bind("Test Project")
+        .execute(pool)
+        .await
+        .unwrap();
     id
 }
 
@@ -267,7 +266,7 @@ async fn list_stories_ordered_by_rank(pool: PgPool) {
     // Verify ranks are in ascending order
     let ranks: Vec<&str> = list.iter().map(|s| s["rank"].as_str().unwrap()).collect();
     for i in 0..ranks.len() - 1 {
-        assert!(ranks[i] < ranks[i + 1], "rank order violated: {:?}", ranks);
+        assert!(ranks[i] < ranks[i + 1], "rank order violated: {ranks:?}");
     }
 }
 
@@ -703,7 +702,12 @@ async fn soft_delete_hides_story(pool: PgPool) {
 
     let resp = app
         .clone()
-        .oneshot(req("DELETE", &format!("/api/v1/stories/{story_id}"), &token, None))
+        .oneshot(req(
+            "DELETE",
+            &format!("/api/v1/stories/{story_id}"),
+            &token,
+            None,
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
@@ -724,7 +728,12 @@ async fn soft_delete_hides_story(pool: PgPool) {
 
     // Must 404 on direct GET
     let resp = app
-        .oneshot(req("GET", &format!("/api/v1/stories/{story_id}"), &token, None))
+        .oneshot(req(
+            "GET",
+            &format!("/api/v1/stories/{story_id}"),
+            &token,
+            None,
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
@@ -762,7 +771,12 @@ async fn story_not_visible_to_other_org(pool: PgPool) {
 
     // org_b cannot see the story
     let resp = app
-        .oneshot(req("GET", &format!("/api/v1/stories/{story_id}"), &token_b, None))
+        .oneshot(req(
+            "GET",
+            &format!("/api/v1/stories/{story_id}"),
+            &token_b,
+            None,
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);

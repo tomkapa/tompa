@@ -92,8 +92,16 @@ Respond ONLY with valid JSON in exactly this format — no other text, no markdo
 }}"#,
         role_title = role.title,
         instructions = role.instructions,
-        conventions = if conventions.is_empty() { "None documented.".into() } else { conventions },
-        adrs = if adrs.is_empty() { "None documented.".into() } else { adrs },
+        conventions = if conventions.is_empty() {
+            "None documented.".into()
+        } else {
+            conventions
+        },
+        adrs = if adrs.is_empty() {
+            "None documented.".into()
+        } else {
+            adrs
+        },
         codebase = if context.codebase_context.is_empty() {
             "No codebase context available.".into()
         } else {
@@ -120,7 +128,12 @@ fn fmt_decisions(decisions: &[QaDecision]) -> String {
     }
     decisions
         .iter()
-        .map(|d| format!("- [{}] Q: {} → A: {}", d.domain, d.question_text, d.answer_text))
+        .map(|d| {
+            format!(
+                "- [{}] Q: {} → A: {}",
+                d.domain, d.question_text, d.answer_text
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n")
 }

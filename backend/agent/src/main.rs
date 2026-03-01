@@ -39,8 +39,7 @@ async fn main() -> Result<()> {
 
     info!(mode = ?config.mode, "Agent starting");
 
-    let config_path =
-        std::env::var("CONFIG_PATH").unwrap_or_else(|_| "config.toml".to_string());
+    let config_path = std::env::var("CONFIG_PATH").unwrap_or_else(|_| "config.toml".to_string());
 
     let (dispatch_tx, dispatch_rx) = mpsc::channel::<DispatchMessage>(256);
 

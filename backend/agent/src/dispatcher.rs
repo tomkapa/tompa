@@ -11,9 +11,7 @@ use shared::{
 };
 
 use crate::{
-    claude_code::ClaudeCodeMessage,
-    git_manager::GitMessage,
-    setup_ui::SetupUiMessage,
+    claude_code::ClaudeCodeMessage, git_manager::GitMessage, setup_ui::SetupUiMessage,
     ws_client::WsClientMessage,
 };
 
@@ -22,15 +20,38 @@ pub enum DispatchMessage {
     // From WebSocket client
     FromServer(ServerToContainer),
     // From Claude Code (Q&A generation mode)
-    QuestionsGenerated { story_id: Uuid, task_id: Option<Uuid>, round: QaRoundContent },
-    TaskDecompositionReady { story_id: Uuid, tasks: Vec<ProposedTask> },
-    ConvergenceResult { story_id: Uuid, task_id: Option<Uuid>, sufficient: bool },
+    QuestionsGenerated {
+        story_id: Uuid,
+        task_id: Option<Uuid>,
+        round: QaRoundContent,
+    },
+    TaskDecompositionReady {
+        story_id: Uuid,
+        tasks: Vec<ProposedTask>,
+    },
+    ConvergenceResult {
+        story_id: Uuid,
+        task_id: Option<Uuid>,
+        sufficient: bool,
+    },
     // From Claude Code (implementation mode)
-    TaskPaused { task_id: Uuid, question: PauseQuestion },
-    TaskCompleted { task_id: Uuid, commit_sha: String },
-    TaskFailed { task_id: Uuid, error: String },
+    TaskPaused {
+        task_id: Uuid,
+        question: PauseQuestion,
+    },
+    TaskCompleted {
+        task_id: Uuid,
+        commit_sha: String,
+    },
+    TaskFailed {
+        task_id: Uuid,
+        error: String,
+    },
     // Status
-    StatusUpdate { task_id: Uuid, text: String },
+    StatusUpdate {
+        task_id: Uuid,
+        text: String,
+    },
     // From Git Manager
     WorktreeReady {
         story_id: Uuid,
@@ -39,9 +60,18 @@ pub enum DispatchMessage {
         worktree: PathBuf,
         context: TaskContext,
     },
-    WorktreeFailed { task_id: Uuid, error: String },
-    CommitComplete { task_id: Uuid, commit_sha: String },
-    CommitFailed { task_id: Uuid, error: String },
+    WorktreeFailed {
+        task_id: Uuid,
+        error: String,
+    },
+    CommitComplete {
+        task_id: Uuid,
+        commit_sha: String,
+    },
+    CommitFailed {
+        task_id: Uuid,
+        error: String,
+    },
 }
 
 pub struct Dispatcher {
@@ -86,7 +116,11 @@ impl Dispatcher {
             DispatchMessage::FromServer(server_msg) => {
                 self.route_server_message(server_msg).await;
             }
-            DispatchMessage::QuestionsGenerated { story_id, task_id, round } => {
+            DispatchMessage::QuestionsGenerated {
+                story_id,
+                task_id,
+                round,
+            } => {
                 self.send_to_ws(WsClientMessage::Send(ContainerToServer::QuestionBatch {
                     story_id,
                     task_id,
@@ -95,13 +129,19 @@ impl Dispatcher {
                 .await;
             }
             DispatchMessage::TaskDecompositionReady { story_id, tasks } => {
-                self.send_to_ws(WsClientMessage::Send(ContainerToServer::TaskDecomposition {
-                    story_id,
-                    proposed_tasks: tasks,
-                }))
+                self.send_to_ws(WsClientMessage::Send(
+                    ContainerToServer::TaskDecomposition {
+                        story_id,
+                        proposed_tasks: tasks,
+                    },
+                ))
                 .await;
             }
-            DispatchMessage::ConvergenceResult { story_id, task_id, sufficient } => {
+            DispatchMessage::ConvergenceResult {
+                story_id,
+                task_id,
+                sufficient,
+            } => {
                 // T20 will implement full convergence handling
                 info!(%story_id, ?task_id, %sufficient, "ConvergenceResult received (stub)");
             }
@@ -112,7 +152,10 @@ impl Dispatcher {
                 }))
                 .await;
             }
-            DispatchMessage::TaskCompleted { task_id, commit_sha } => {
+            DispatchMessage::TaskCompleted {
+                task_id,
+                commit_sha,
+            } => {
                 // If git is running, delegate commit+push to git manager (T21).
                 // Git will send CommitComplete with the authoritative SHA.
                 if let Some(git_tx) = &self.git_tx {
@@ -158,7 +201,8 @@ impl Dispatcher {
                 worktree,
                 context,
             } => {
-                self.task_worktrees.insert(task_id, (story_id, worktree.clone()));
+                self.task_worktrees
+                    .insert(task_id, (story_id, worktree.clone()));
                 self.send_to_claude(ClaudeCodeMessage::StartTask {
                     task_id,
                     session_id,
@@ -174,7 +218,10 @@ impl Dispatcher {
                 }))
                 .await;
             }
-            DispatchMessage::CommitComplete { task_id, commit_sha } => {
+            DispatchMessage::CommitComplete {
+                task_id,
+                commit_sha,
+            } => {
                 self.task_worktrees.remove(&task_id);
                 self.send_to_ws(WsClientMessage::Send(ContainerToServer::TaskCompleted {
                     task_id,
@@ -196,15 +243,23 @@ impl Dispatcher {
     async fn route_server_message(&mut self, msg: ServerToContainer) {
         match msg {
             ServerToContainer::StartGrooming { story_id, context } => {
-                self.send_to_claude(ClaudeCodeMessage::StartGrooming { story_id, context }).await;
+                self.send_to_claude(ClaudeCodeMessage::StartGrooming { story_id, context })
+                    .await;
             }
             ServerToContainer::StartPlanning { story_id, context } => {
-                self.send_to_claude(ClaudeCodeMessage::StartPlanning { story_id, context }).await;
+                self.send_to_claude(ClaudeCodeMessage::StartPlanning { story_id, context })
+                    .await;
             }
             ServerToContainer::AnswerReceived { round_id, answers } => {
-                self.send_to_claude(ClaudeCodeMessage::AnswerReceived { round_id, answers }).await;
+                self.send_to_claude(ClaudeCodeMessage::AnswerReceived { round_id, answers })
+                    .await;
             }
-            ServerToContainer::StartTask { story_id, task_id, session_id, context } => {
+            ServerToContainer::StartTask {
+                story_id,
+                task_id,
+                session_id,
+                context,
+            } => {
                 // Route through git manager if available (creates branch + worktree).
                 // Git will send WorktreeReady → then we send StartTask to claude.
                 if let Some(git_tx) = &self.git_tx {
@@ -228,9 +283,12 @@ impl Dispatcher {
                     .await;
                 }
             }
-            ServerToContainer::ResumeTask { task_id, session_id, answer } => {
-                let worktree =
-                    self.task_worktrees.get(&task_id).map(|(_, wt)| wt.clone());
+            ServerToContainer::ResumeTask {
+                task_id,
+                session_id,
+                answer,
+            } => {
+                let worktree = self.task_worktrees.get(&task_id).map(|(_, wt)| wt.clone());
                 self.send_to_claude(ClaudeCodeMessage::ResumeTask {
                     task_id,
                     session_id,
@@ -241,10 +299,12 @@ impl Dispatcher {
             }
             ServerToContainer::CancelTask { task_id } => {
                 self.task_worktrees.remove(&task_id);
-                self.send_to_claude(ClaudeCodeMessage::CancelTask { task_id }).await;
+                self.send_to_claude(ClaudeCodeMessage::CancelTask { task_id })
+                    .await;
             }
             ServerToContainer::Ping => {
-                self.send_to_ws(WsClientMessage::Send(ContainerToServer::Pong)).await;
+                self.send_to_ws(WsClientMessage::Send(ContainerToServer::Pong))
+                    .await;
             }
         }
     }
@@ -306,9 +366,13 @@ mod tests {
     async fn ping_sends_pong_to_ws() {
         let (ws_tx, mut ws_rx) = mpsc::channel(4);
         let mut d = make_dispatcher(Some(ws_tx), None);
-        d.handle(DispatchMessage::FromServer(ServerToContainer::Ping)).await;
+        d.handle(DispatchMessage::FromServer(ServerToContainer::Ping))
+            .await;
         let msg = ws_rx.try_recv().expect("expected a ws message");
-        assert!(matches!(msg, WsClientMessage::Send(ContainerToServer::Pong)));
+        assert!(matches!(
+            msg,
+            WsClientMessage::Send(ContainerToServer::Pong)
+        ));
     }
 
     #[tokio::test]
@@ -386,7 +450,8 @@ mod tests {
         let mut d = make_dispatcher_with_git(None, None, Some(git_tx));
         let task_id = Uuid::now_v7();
         let story_id = Uuid::now_v7();
-        d.task_worktrees.insert(task_id, (story_id, PathBuf::from("/tmp/wt")));
+        d.task_worktrees
+            .insert(task_id, (story_id, PathBuf::from("/tmp/wt")));
 
         d.handle(DispatchMessage::TaskCompleted {
             task_id,
@@ -394,7 +459,9 @@ mod tests {
         })
         .await;
 
-        let msg = git_rx.try_recv().expect("expected GitMessage::CommitAndPush");
+        let msg = git_rx
+            .try_recv()
+            .expect("expected GitMessage::CommitAndPush");
         assert!(matches!(msg, GitMessage::CommitAndPush { task_id: tid, .. } if tid == task_id));
     }
 
@@ -434,14 +501,16 @@ mod tests {
     async fn start_grooming_routes_to_claude() {
         let (claude_tx, mut claude_rx) = mpsc::channel(4);
         let mut d = make_dispatcher(None, Some(claude_tx));
-        d.handle(DispatchMessage::FromServer(ServerToContainer::StartGrooming {
-            story_id: Uuid::new_v4(),
-            context: GroomingContext {
-                story_description: "test".into(),
-                knowledge: vec![],
-                codebase_context: String::new(),
+        d.handle(DispatchMessage::FromServer(
+            ServerToContainer::StartGrooming {
+                story_id: Uuid::new_v4(),
+                context: GroomingContext {
+                    story_description: "test".into(),
+                    knowledge: vec![],
+                    codebase_context: String::new(),
+                },
             },
-        }))
+        ))
         .await;
         let msg = claude_rx.try_recv().expect("expected a claude message");
         assert!(matches!(msg, ClaudeCodeMessage::StartGrooming { .. }));
@@ -476,10 +545,10 @@ mod tests {
             context: task_ctx(),
         }))
         .await;
-        let msg = git_rx.try_recv().expect("expected GitMessage::EnsureWorktree");
-        assert!(
-            matches!(msg, GitMessage::EnsureWorktree { task_id: tid, .. } if tid == task_id)
-        );
+        let msg = git_rx
+            .try_recv()
+            .expect("expected GitMessage::EnsureWorktree");
+        assert!(matches!(msg, GitMessage::EnsureWorktree { task_id: tid, .. } if tid == task_id));
     }
 
     /// WorktreeReady → sends StartTask to claude and stores worktree mapping.
@@ -515,7 +584,8 @@ mod tests {
         let (ws_tx, mut ws_rx) = mpsc::channel(4);
         let mut d = make_dispatcher(Some(ws_tx), None);
         let task_id = Uuid::now_v7();
-        d.task_worktrees.insert(task_id, (Uuid::now_v7(), PathBuf::from("/tmp/wt")));
+        d.task_worktrees
+            .insert(task_id, (Uuid::now_v7(), PathBuf::from("/tmp/wt")));
 
         d.handle(DispatchMessage::CommitComplete {
             task_id,
@@ -542,7 +612,10 @@ mod tests {
         })
         .await;
         let msg = ws_rx.try_recv().expect("expected TaskFailed to WS");
-        assert!(matches!(msg, WsClientMessage::Send(ContainerToServer::TaskFailed { .. })));
+        assert!(matches!(
+            msg,
+            WsClientMessage::Send(ContainerToServer::TaskFailed { .. })
+        ));
     }
 
     #[tokio::test]

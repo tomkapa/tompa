@@ -9,7 +9,9 @@ use serde::Deserialize;
 use crate::{errors::ApiError, state::AppState};
 
 use super::{
-    service::{create_jwt, exchange_github_code, exchange_google_code, find_or_create_user, make_claims},
+    service::{
+        create_jwt, exchange_github_code, exchange_google_code, find_or_create_user, make_claims,
+    },
     types::{AuthContext, MeResponse},
 };
 
@@ -65,7 +67,11 @@ pub(crate) async fn login(
                 percent_encode(&redirect_uri),
             )
         }
-        _ => return Err(ApiError::BadRequest(format!("Unknown provider: {provider}"))),
+        _ => {
+            return Err(ApiError::BadRequest(format!(
+                "Unknown provider: {provider}"
+            )))
+        }
     };
 
     Ok(Redirect::to(&url).into_response())
@@ -101,7 +107,11 @@ pub(crate) async fn callback(
     let profile = match provider.as_str() {
         "google" => exchange_google_code(&params.code, &state.config).await,
         "github" => exchange_github_code(&params.code, &state.config).await,
-        _ => return Err(ApiError::BadRequest(format!("Unknown provider: {provider}"))),
+        _ => {
+            return Err(ApiError::BadRequest(format!(
+                "Unknown provider: {provider}"
+            )))
+        }
     }
     .map_err(ApiError::Internal)?;
 
@@ -138,7 +148,10 @@ pub(crate) async fn callback(
 )]
 pub(crate) async fn logout() -> impl IntoResponse {
     (
-        [(header::SET_COOKIE, "session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0")],
+        [(
+            header::SET_COOKIE,
+            "session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0",
+        )],
         StatusCode::OK,
     )
 }
@@ -194,8 +207,7 @@ pub(crate) async fn me(
 fn build_session_cookie(token: &str, secure: bool) -> String {
     let secure_flag = if secure { "; Secure" } else { "" };
     format!(
-        "session={}; HttpOnly{}; SameSite=Lax; Path=/; Max-Age={}",
-        token, secure_flag, SESSION_MAX_AGE
+        "session={token}; HttpOnly{secure_flag}; SameSite=Lax; Path=/; Max-Age={SESSION_MAX_AGE}"
     )
 }
 

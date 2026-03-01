@@ -59,7 +59,10 @@ struct GoogleUserInfo {
 
 pub async fn exchange_google_code(code: &str, config: &Config) -> anyhow::Result<OAuthProfile> {
     let client = Client::new();
-    let redirect_uri = format!("{}/api/v1/auth/callback/google", config.oauth_redirect_base_url);
+    let redirect_uri = format!(
+        "{}/api/v1/auth/callback/google",
+        config.oauth_redirect_base_url
+    );
 
     let token: GoogleTokenResponse = client
         .post("https://oauth2.googleapis.com/token")
@@ -119,7 +122,10 @@ struct GitHubEmail {
 
 pub async fn exchange_github_code(code: &str, config: &Config) -> anyhow::Result<OAuthProfile> {
     let client = Client::new();
-    let redirect_uri = format!("{}/api/v1/auth/callback/github", config.oauth_redirect_base_url);
+    let redirect_uri = format!(
+        "{}/api/v1/auth/callback/github",
+        config.oauth_redirect_base_url
+    );
 
     let token: GitHubTokenResponse = client
         .post("https://github.com/login/oauth/access_token")
@@ -251,5 +257,9 @@ pub async fn find_or_create_user(pool: &PgPool, profile: &OAuthProfile) -> anyho
     };
 
     tx.commit().await?;
-    Ok(UserOrg { user_id, org_id, role })
+    Ok(UserOrg {
+        user_id,
+        org_id,
+        role,
+    })
 }

@@ -22,7 +22,9 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/api/v1/projects", get(list_projects).post(create_project))
         .route(
             "/api/v1/projects/:id",
-            get(get_project).patch(update_project).delete(delete_project),
+            get(get_project)
+                .patch(update_project)
+                .delete(delete_project),
         )
         .route_layer(axum::middleware::from_fn_with_state(state, require_auth))
 }

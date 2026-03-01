@@ -1,11 +1,7 @@
 use chrono::Utc;
 use uuid::Uuid;
 
-use crate::{
-    auth::middleware::set_org_context,
-    errors::ApiError,
-    state::AppState,
-};
+use crate::{auth::middleware::set_org_context, errors::ApiError, state::AppState};
 
 use super::{
     repo,

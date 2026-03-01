@@ -101,6 +101,7 @@ pub async fn get_tasks_for_story(
 }
 
 /// Insert a new story.
+#[allow(clippy::too_many_arguments)]
 pub async fn create_story(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     org_id: Uuid,

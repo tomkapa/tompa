@@ -31,8 +31,13 @@ pub enum GitMessage {
         context: TaskContext,
     },
     /// Stage, commit, and push all changes in a worktree after task completion.
-    CommitAndPush { story_id: Uuid, task_id: Uuid, worktree: PathBuf },
+    CommitAndPush {
+        story_id: Uuid,
+        task_id: Uuid,
+        worktree: PathBuf,
+    },
     /// Remove the worktree when a story is fully done.
+    #[allow(dead_code)]
     RemoveWorktree { story_id: Uuid },
 }
 
@@ -56,7 +61,12 @@ impl GitManager {
         // The URL is stored for push auth but the local path is always ".".
         let _ = github_repo_url; // kept for future use (clone path resolution)
         let repo_path = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        Self { repo_path, github_access_token, dispatch_tx, rx }
+        Self {
+            repo_path,
+            github_access_token,
+            dispatch_tx,
+            rx,
+        }
     }
 
     /// Constructor for tests — allows an explicit repo path.
@@ -67,7 +77,12 @@ impl GitManager {
         dispatch_tx: mpsc::Sender<DispatchMessage>,
         rx: mpsc::Receiver<GitMessage>,
     ) -> Self {
-        Self { repo_path, github_access_token, dispatch_tx, rx }
+        Self {
+            repo_path,
+            github_access_token,
+            dispatch_tx,
+            rx,
+        }
     }
 
     pub async fn run(mut self) {
@@ -80,33 +95,44 @@ impl GitManager {
 
     async fn handle(&self, msg: GitMessage) {
         match msg {
-            GitMessage::EnsureWorktree { story_id, task_id, session_id, context } => {
-                match self.ensure_worktree(story_id) {
-                    Ok(worktree) => {
-                        self.send(DispatchMessage::WorktreeReady {
-                            story_id,
-                            task_id,
-                            session_id,
-                            worktree,
-                            context,
-                        })
-                        .await;
-                    }
-                    Err(e) => {
-                        error!(%story_id, %task_id, %e, "ensure_worktree failed");
-                        self.send(DispatchMessage::WorktreeFailed {
-                            task_id,
-                            error: e.to_string(),
-                        })
-                        .await;
-                    }
+            GitMessage::EnsureWorktree {
+                story_id,
+                task_id,
+                session_id,
+                context,
+            } => match self.ensure_worktree(story_id) {
+                Ok(worktree) => {
+                    self.send(DispatchMessage::WorktreeReady {
+                        story_id,
+                        task_id,
+                        session_id,
+                        worktree,
+                        context,
+                    })
+                    .await;
                 }
-            }
-            GitMessage::CommitAndPush { story_id, task_id, worktree } => {
+                Err(e) => {
+                    error!(%story_id, %task_id, %e, "ensure_worktree failed");
+                    self.send(DispatchMessage::WorktreeFailed {
+                        task_id,
+                        error: e.to_string(),
+                    })
+                    .await;
+                }
+            },
+            GitMessage::CommitAndPush {
+                story_id,
+                task_id,
+                worktree,
+            } => {
                 let branch = story_branch_name(story_id);
                 match self.commit_and_push(&worktree, task_id, &branch) {
                     Ok(commit_sha) => {
-                        self.send(DispatchMessage::CommitComplete { task_id, commit_sha }).await;
+                        self.send(DispatchMessage::CommitComplete {
+                            task_id,
+                            commit_sha,
+                        })
+                        .await;
                     }
                     Err(e) => {
                         error!(%task_id, %e, "commit_and_push failed");
@@ -145,10 +171,10 @@ impl GitManager {
 
     /// Create the story branch from HEAD using gix. No-op if it already exists.
     fn ensure_branch(&self, branch: &str) -> Result<()> {
-        let repo =
-            gix::open(&self.repo_path).with_context(|| format!("open repo {:?}", self.repo_path))?;
+        let repo = gix::open(&self.repo_path)
+            .with_context(|| format!("open repo {:?}", self.repo_path))?;
 
-        let full_ref = format!("refs/heads/{}", branch);
+        let full_ref = format!("refs/heads/{branch}");
 
         if repo.find_reference(full_ref.as_str()).is_ok() {
             info!(%branch, "branch already exists");
@@ -156,18 +182,15 @@ impl GitManager {
         }
 
         // Resolve HEAD to a concrete commit id.
-        let commit_id = repo
-            .head_commit()
-            .context("resolve HEAD commit")?
-            .id;
+        let commit_id = repo.head_commit().context("resolve HEAD commit")?.id;
 
         repo.reference(
             full_ref.as_str(),
             commit_id,
             gix::refs::transaction::PreviousValue::MustNotExist,
-            format!("T21: create story branch {}", branch).as_str(),
+            format!("T21: create story branch {branch}").as_str(),
         )
-        .with_context(|| format!("create branch {}", branch))?;
+        .with_context(|| format!("create branch {branch}"))?;
 
         info!(%branch, "branch created");
         Ok(())
@@ -175,7 +198,9 @@ impl GitManager {
 
     /// Run `git worktree add <path> <branch>` in the main repo.
     fn create_worktree(&self, path: &Path, branch: &str) -> Result<()> {
-        let path_str = path.to_str().ok_or_else(|| anyhow!("non-UTF8 worktree path"))?;
+        let path_str = path
+            .to_str()
+            .ok_or_else(|| anyhow!("non-UTF8 worktree path"))?;
 
         let out = StdCommand::new("git")
             .args(["worktree", "add", path_str, branch])
@@ -185,7 +210,7 @@ impl GitManager {
 
         if !out.status.success() {
             let stderr = String::from_utf8_lossy(&out.stderr);
-            bail!("git worktree add failed: {}", stderr);
+            bail!("git worktree add failed: {stderr}");
         }
 
         info!(path = ?path, %branch, "worktree created");
@@ -203,11 +228,11 @@ impl GitManager {
             .context("git add -A")?;
         if !out.status.success() {
             let stderr = String::from_utf8_lossy(&out.stderr);
-            bail!("git add -A failed: {}", stderr);
+            bail!("git add -A failed: {stderr}");
         }
 
         // Commit. If there is nothing to commit, use HEAD sha instead.
-        let commit_message = format!("[T-{}] automated task commit", task_id);
+        let commit_message = format!("[T-{task_id}] automated task commit");
         let out = StdCommand::new("git")
             .args(["commit", "-m", &commit_message])
             .current_dir(worktree)
@@ -224,7 +249,7 @@ impl GitManager {
                 head_sha(worktree)?
             } else {
                 let stderr = String::from_utf8_lossy(&out.stderr);
-                bail!("git commit failed: {} {}", stdout, stderr);
+                bail!("git commit failed: {stdout} {stderr}");
             }
         };
 
@@ -242,7 +267,7 @@ impl GitManager {
         };
 
         let remote_url = self.authenticated_remote_url(token)?;
-        let refspec = format!("refs/heads/{0}:refs/heads/{0}", branch);
+        let refspec = format!("refs/heads/{branch}:refs/heads/{branch}");
 
         let out = StdCommand::new("git")
             .args(["push", &remote_url, &refspec])
@@ -252,7 +277,7 @@ impl GitManager {
 
         if !out.status.success() {
             let stderr = String::from_utf8_lossy(&out.stderr);
-            bail!("git push failed: {}", stderr);
+            bail!("git push failed: {stderr}");
         }
 
         info!(%branch, "push complete");
@@ -265,7 +290,9 @@ impl GitManager {
             return Ok(());
         }
 
-        let path_str = path.to_str().ok_or_else(|| anyhow!("non-UTF8 worktree path"))?;
+        let path_str = path
+            .to_str()
+            .ok_or_else(|| anyhow!("non-UTF8 worktree path"))?;
 
         let out = StdCommand::new("git")
             .args(["worktree", "remove", "--force", path_str])
@@ -275,7 +302,7 @@ impl GitManager {
 
         if !out.status.success() {
             let stderr = String::from_utf8_lossy(&out.stderr);
-            bail!("git worktree remove failed: {}", stderr);
+            bail!("git worktree remove failed: {stderr}");
         }
 
         info!(path = ?path, "worktree removed");
@@ -285,7 +312,9 @@ impl GitManager {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     fn worktree_path(&self, story_id: Uuid) -> PathBuf {
-        self.repo_path.join(".worktrees").join(format!("story-{}", story_id))
+        self.repo_path
+            .join(".worktrees")
+            .join(format!("story-{story_id}"))
     }
 
     /// Build an authenticated HTTPS remote URL by injecting the token.
@@ -319,7 +348,7 @@ impl GitManager {
 
 /// Canonical branch name for a story: `story/STORY-{uuid}`.
 pub fn story_branch_name(story_id: Uuid) -> String {
-    format!("story/STORY-{}", story_id)
+    format!("story/STORY-{story_id}")
 }
 
 /// Parse the short commit SHA from `git commit` stdout.
@@ -337,7 +366,9 @@ fn parse_commit_sha_from_output(stdout: &[u8]) -> Result<String> {
             }
         }
     }
-    Err(anyhow!("could not parse SHA from git commit output: {:.200}", s))
+    Err(anyhow!(
+        "could not parse SHA from git commit output: {s:.200}"
+    ))
 }
 
 /// Return the current HEAD short SHA in `dir`.
@@ -352,7 +383,10 @@ fn head_sha(dir: &Path) -> Result<String> {
         bail!("git rev-parse HEAD failed");
     }
 
-    Ok(String::from_utf8(out.stdout).context("SHA not UTF-8")?.trim().to_string())
+    Ok(String::from_utf8(out.stdout)
+        .context("SHA not UTF-8")?
+        .trim()
+        .to_string())
 }
 
 /// Inject a GitHub personal access token into an HTTPS (or SSH) remote URL.
@@ -363,15 +397,15 @@ pub fn inject_token_into_url(url: &str, token: &str) -> Result<String> {
     if let Some(rest) = url.strip_prefix("https://") {
         // Strip any existing userinfo (token@…)
         let host_path = rest.split_once('@').map(|(_, r)| r).unwrap_or(rest);
-        Ok(format!("https://{}@{}", token, host_path))
+        Ok(format!("https://{token}@{host_path}"))
     } else if let Some(rest) = url.strip_prefix("git@") {
         // git@github.com:org/repo.git → https://<token>@github.com/org/repo.git
         let (host, path) = rest
             .split_once(':')
-            .ok_or_else(|| anyhow!("cannot parse SSH remote URL: {}", url))?;
-        Ok(format!("https://{}@{}/{}", token, host, path))
+            .ok_or_else(|| anyhow!("cannot parse SSH remote URL: {url}"))?;
+        Ok(format!("https://{token}@{host}/{path}"))
     } else {
-        bail!("unsupported remote URL format: {}", url)
+        bail!("unsupported remote URL format: {url}")
     }
 }
 
@@ -392,7 +426,11 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let path = tmp.path().to_path_buf();
 
-        Cmd::new("git").args(["init"]).current_dir(&path).output().unwrap();
+        Cmd::new("git")
+            .args(["init"])
+            .current_dir(&path)
+            .output()
+            .unwrap();
         Cmd::new("git")
             .args(["config", "user.email", "test@test.com"])
             .current_dir(&path)
@@ -405,7 +443,11 @@ mod tests {
             .unwrap();
 
         std::fs::write(path.join("README.md"), "# test repo").unwrap();
-        Cmd::new("git").args(["add", "README.md"]).current_dir(&path).output().unwrap();
+        Cmd::new("git")
+            .args(["add", "README.md"])
+            .current_dir(&path)
+            .output()
+            .unwrap();
         Cmd::new("git")
             .args(["commit", "-m", "initial"])
             .current_dir(&path)
@@ -466,7 +508,7 @@ mod tests {
             .output()
             .unwrap();
         let stdout = String::from_utf8_lossy(&out.stdout);
-        assert!(stdout.contains(&branch), "branch not found: {}", stdout);
+        assert!(stdout.contains(&branch), "branch not found: {stdout}");
     }
 
     #[test]
@@ -494,7 +536,12 @@ mod tests {
 
         assert!(worktree.exists(), "worktree path should exist");
         // Path must follow the deterministic convention
-        assert_eq!(worktree, repo_path.join(".worktrees").join(format!("story-{}", story_id)));
+        assert_eq!(
+            worktree,
+            repo_path
+                .join(".worktrees")
+                .join(format!("story-{story_id}"))
+        );
     }
 
     #[test]
@@ -547,7 +594,10 @@ mod tests {
             .output()
             .unwrap();
         let log_str = String::from_utf8_lossy(&log.stdout);
-        assert!(log_str.contains(&task_id.to_string()), "commit message missing task ID");
+        assert!(
+            log_str.contains(&task_id.to_string()),
+            "commit message missing task ID"
+        );
     }
 
     #[test]

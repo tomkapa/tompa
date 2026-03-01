@@ -1,10 +1,6 @@
 use uuid::Uuid;
 
-use crate::{
-    auth::middleware::set_org_context,
-    errors::ApiError,
-    state::AppState,
-};
+use crate::{auth::middleware::set_org_context, errors::ApiError, state::AppState};
 
 use super::{
     repo,
@@ -97,11 +93,7 @@ pub async fn update_project(
     Ok(to_response(row))
 }
 
-pub async fn delete_project(
-    state: &AppState,
-    org_id: Uuid,
-    id: Uuid,
-) -> Result<(), ApiError> {
+pub async fn delete_project(state: &AppState, org_id: Uuid, id: Uuid) -> Result<(), ApiError> {
     let mut tx = state.pool.begin().await?;
     set_org_context(&mut tx, org_id).await?;
     let deleted = repo::soft_delete_project(&mut tx, id).await?;

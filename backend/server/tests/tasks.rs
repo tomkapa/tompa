@@ -22,10 +22,10 @@ use uuid::Uuid;
 
 use server::{
     agents::registry::DashMapRegistry,
-    sse::broadcaster::SseBroadcaster,
     auth::{service::make_claims, types::AuthClaims},
     build_app,
     config::Config,
+    sse::broadcaster::SseBroadcaster,
     state::AppState,
 };
 
@@ -55,7 +55,10 @@ fn test_state(pool: PgPool) -> AppState {
 
 fn test_jwt(user_id: Uuid, org_id: Uuid) -> String {
     let claims = make_claims(user_id, org_id, "owner");
-    let claims = AuthClaims { exp: 9_999_999_999, ..claims };
+    let claims = AuthClaims {
+        exp: 9_999_999_999,
+        ..claims
+    };
     encode(
         &Header::default(),
         &claims,
@@ -71,7 +74,7 @@ async fn seed_user(pool: &PgPool) -> Uuid {
          VALUES ($1, $2, $3, 'test', $4)",
     )
     .bind(id)
-    .bind(format!("user-{}@test.example", id))
+    .bind(format!("user-{id}@test.example"))
     .bind("Test User")
     .bind(id.to_string())
     .execute(pool)
@@ -88,15 +91,13 @@ async fn seed_org(pool: &PgPool, user_id: Uuid) -> Uuid {
         .execute(pool)
         .await
         .unwrap();
-    sqlx::query(
-        "INSERT INTO org_members (id, org_id, user_id, role) VALUES ($1, $2, $3, 'owner')",
-    )
-    .bind(Uuid::now_v7())
-    .bind(org_id)
-    .bind(user_id)
-    .execute(pool)
-    .await
-    .unwrap();
+    sqlx::query("INSERT INTO org_members (id, org_id, user_id, role) VALUES ($1, $2, $3, 'owner')")
+        .bind(Uuid::now_v7())
+        .bind(org_id)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .unwrap();
     org_id
 }
 
@@ -356,7 +357,12 @@ async fn soft_delete_hides_task(pool: PgPool) {
 
     let resp = app
         .clone()
-        .oneshot(req("DELETE", &format!("/api/v1/tasks/{task_id}"), &token, None))
+        .oneshot(req(
+            "DELETE",
+            &format!("/api/v1/tasks/{task_id}"),
+            &token,
+            None,
+        ))
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
@@ -375,12 +381,7 @@ async fn soft_delete_hides_task(pool: PgPool) {
 
 // ── State machine tests ───────────────────────────────────────────────────────
 
-async fn create_task_via_api(
-    app: axum::Router,
-    story_id: Uuid,
-    token: &str,
-    pos: i32,
-) -> String {
+async fn create_task_via_api(app: axum::Router, story_id: Uuid, token: &str, pos: i32) -> String {
     let resp = app
         .oneshot(req(
             "POST",
@@ -649,8 +650,7 @@ async fn make_task(app: axum::Router, story_id: Uuid, token: &str, pos: i32) -> 
         ))
         .await
         .unwrap();
-    json_body(resp)
-        .await["id"]
+    json_body(resp).await["id"]
         .as_str()
         .unwrap()
         .parse()

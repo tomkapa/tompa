@@ -37,7 +37,13 @@ impl WsClient {
         rx: mpsc::Receiver<WsClientMessage>,
         status_tx: watch::Sender<ConnectionStatus>,
     ) -> Self {
-        Self { server_url, api_key, dispatch_tx, rx, status_tx }
+        Self {
+            server_url,
+            api_key,
+            dispatch_tx,
+            rx,
+            status_tx,
+        }
     }
 
     pub async fn run(mut self) {
@@ -48,7 +54,8 @@ impl WsClient {
                     info!("WebSocket connected");
                     self.status_tx.send_replace(ConnectionStatus::connected());
                     self.handle_connection(ws_stream).await;
-                    self.status_tx.send_replace(ConnectionStatus::disconnected());
+                    self.status_tx
+                        .send_replace(ConnectionStatus::disconnected());
                     warn!("WebSocket disconnected, reconnecting...");
                 }
                 Err(e) => {
@@ -64,7 +71,10 @@ impl WsClient {
         let url = if self.server_url.starts_with("ws://") || self.server_url.starts_with("wss://") {
             format!("{}/ws/container", self.server_url.trim_end_matches('/'))
         } else {
-            format!("wss://{}/ws/container", self.server_url.trim_end_matches('/'))
+            format!(
+                "wss://{}/ws/container",
+                self.server_url.trim_end_matches('/')
+            )
         };
 
         let mut request = url.as_str().into_client_request()?;
@@ -196,7 +206,10 @@ mod tests {
             .await
             .expect("timed out")
             .expect("channel closed");
-        assert!(matches!(msg, DispatchMessage::FromServer(ServerToContainer::Ping)));
+        assert!(matches!(
+            msg,
+            DispatchMessage::FromServer(ServerToContainer::Ping)
+        ));
     }
 
     #[tokio::test]
@@ -210,7 +223,10 @@ mod tests {
         let (tcp, _) = listener.accept().await.unwrap();
         let mut ws = accept_async(tcp).await.unwrap();
 
-        ws_tx.send(WsClientMessage::Send(ContainerToServer::Pong)).await.unwrap();
+        ws_tx
+            .send(WsClientMessage::Send(ContainerToServer::Pong))
+            .await
+            .unwrap();
 
         let msg = tokio::time::timeout(Duration::from_secs(2), ws.next())
             .await

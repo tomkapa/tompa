@@ -1,10 +1,6 @@
 use uuid::Uuid;
 
-use crate::{
-    auth::middleware::set_org_context,
-    errors::ApiError,
-    state::AppState,
-};
+use crate::{auth::middleware::set_org_context, errors::ApiError, state::AppState};
 
 use super::{
     rank,
@@ -159,11 +155,7 @@ pub async fn update_story(
     Ok(to_response(updated, tasks))
 }
 
-pub async fn delete_story(
-    state: &AppState,
-    org_id: Uuid,
-    id: Uuid,
-) -> Result<(), ApiError> {
+pub async fn delete_story(state: &AppState, org_id: Uuid, id: Uuid) -> Result<(), ApiError> {
     let mut tx = state.pool.begin().await?;
     set_org_context(&mut tx, org_id).await?;
     let deleted = repo::soft_delete_story(&mut tx, id).await?;
@@ -214,9 +206,8 @@ pub async fn update_rank(
         None
     };
 
-    let new_rank =
-        rank::generate_key_between(lo_rank.as_deref(), hi_rank.as_deref())
-            .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+    let new_rank = rank::generate_key_between(lo_rank.as_deref(), hi_rank.as_deref())
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
 
     let updated = repo::update_rank(&mut tx, id, &new_rank)
         .await?

@@ -29,24 +29,29 @@ use super::registry::ConnectionRegistry;
 /// single bad message.
 pub async fn handle_message(state: &AppState, key_info: &ContainerKeyInfo, msg: ContainerToServer) {
     let result = match msg {
-        ContainerToServer::QuestionBatch { story_id, task_id, round } => {
-            on_question_batch(state, key_info, story_id, task_id, round).await
-        }
-        ContainerToServer::TaskDecomposition { story_id, proposed_tasks } => {
-            on_task_decomposition(state, key_info, story_id, proposed_tasks).await
-        }
+        ContainerToServer::QuestionBatch {
+            story_id,
+            task_id,
+            round,
+        } => on_question_batch(state, key_info, story_id, task_id, round).await,
+        ContainerToServer::TaskDecomposition {
+            story_id,
+            proposed_tasks,
+        } => on_task_decomposition(state, key_info, story_id, proposed_tasks).await,
         ContainerToServer::TaskPaused { task_id, question } => {
             on_task_paused(state, key_info, task_id, question).await
         }
-        ContainerToServer::TaskCompleted { task_id, commit_sha } => {
-            on_task_completed(state, key_info, task_id, &commit_sha).await
-        }
+        ContainerToServer::TaskCompleted {
+            task_id,
+            commit_sha,
+        } => on_task_completed(state, key_info, task_id, &commit_sha).await,
         ContainerToServer::TaskFailed { task_id, error } => {
             on_task_failed(state, key_info, task_id, &error).await
         }
-        ContainerToServer::StatusUpdate { task_id, status_text } => {
-            on_status_update(state, key_info, task_id, &status_text).await
-        }
+        ContainerToServer::StatusUpdate {
+            task_id,
+            status_text,
+        } => on_status_update(state, key_info, task_id, &status_text).await,
         ContainerToServer::Pong => Ok(()),
     };
 
@@ -103,9 +108,14 @@ async fn on_question_batch(
 
     tx.commit().await?;
 
-    state
-        .broadcaster
-        .broadcast(org_id, SseEvent::NewQuestion { story_id, task_id, round_id: row.id });
+    state.broadcaster.broadcast(
+        org_id,
+        SseEvent::NewQuestion {
+            story_id,
+            task_id,
+            round_id: row.id,
+        },
+    );
 
     Ok(())
 }
@@ -152,8 +162,16 @@ async fn on_task_decomposition(
         }
     }
 
-    story_repo::update_story(&mut tx, story_id, None, None, None, None, Some("decomposition"))
-        .await?;
+    story_repo::update_story(
+        &mut tx,
+        story_id,
+        None,
+        None,
+        None,
+        None,
+        Some("decomposition"),
+    )
+    .await?;
 
     tx.commit().await?;
 
@@ -197,10 +215,9 @@ async fn on_task_paused(
     )
     .await?;
 
-    let max_round =
-        qa_repo::get_max_round_number(&mut tx, story_id, Some(task_id), "task_qa")
-            .await?
-            .unwrap_or(0);
+    let max_round = qa_repo::get_max_round_number(&mut tx, story_id, Some(task_id), "task_qa")
+        .await?
+        .unwrap_or(0);
 
     let content_value = serde_json::to_value(&QaContent {
         questions: vec![QaQuestion {
@@ -240,7 +257,11 @@ async fn on_task_paused(
     );
     state.broadcaster.broadcast(
         org_id,
-        SseEvent::NewQuestion { story_id, task_id: Some(task_id), round_id: round.id },
+        SseEvent::NewQuestion {
+            story_id,
+            task_id: Some(task_id),
+            round_id: round.id,
+        },
     );
 
     Ok(())
@@ -281,11 +302,12 @@ async fn on_task_completed(
     // advance the story's pipeline to "review".
     let all_tasks = task_repo::list_tasks(&mut tx, story_id).await?;
     let all_reviewed = !all_tasks.is_empty()
-        && all_tasks.iter().all(|t| t.state == "running" || t.state == "done");
+        && all_tasks
+            .iter()
+            .all(|t| t.state == "running" || t.state == "done");
 
     if all_reviewed {
-        story_repo::update_story(&mut tx, story_id, None, None, None, None, Some("review"))
-            .await?;
+        story_repo::update_story(&mut tx, story_id, None, None, None, None, Some("review")).await?;
     }
 
     tx.commit().await?;
@@ -403,8 +425,10 @@ pub async fn send_start_grooming(
 ) {
     if let Some(key_id) = find_connected_key(&state.pool, state.registry.as_ref(), project_id).await
     {
-        let _ =
-            state.registry.send_to(key_id, ServerToContainer::StartGrooming { story_id, context });
+        let _ = state.registry.send_to(
+            key_id,
+            ServerToContainer::StartGrooming { story_id, context },
+        );
     }
 }
 
@@ -418,9 +442,10 @@ pub async fn send_start_planning(
 ) {
     if let Some(key_id) = find_connected_key(&state.pool, state.registry.as_ref(), project_id).await
     {
-        let _ = state
-            .registry
-            .send_to(key_id, ServerToContainer::StartPlanning { story_id, context });
+        let _ = state.registry.send_to(
+            key_id,
+            ServerToContainer::StartPlanning { story_id, context },
+        );
     }
 }
 
@@ -434,9 +459,10 @@ pub async fn send_answer_received(
 ) {
     if let Some(key_id) = find_connected_key(&state.pool, state.registry.as_ref(), project_id).await
     {
-        let _ = state
-            .registry
-            .send_to(key_id, ServerToContainer::AnswerReceived { round_id, answers });
+        let _ = state.registry.send_to(
+            key_id,
+            ServerToContainer::AnswerReceived { round_id, answers },
+        );
     }
 }
 
@@ -476,7 +502,11 @@ pub async fn send_resume_task(
     {
         let _ = state.registry.send_to(
             key_id,
-            ServerToContainer::ResumeTask { task_id, session_id, answer },
+            ServerToContainer::ResumeTask {
+                task_id,
+                session_id,
+                answer,
+            },
         );
     }
 }
@@ -513,12 +543,13 @@ async fn find_connected_key(
     registry: &dyn ConnectionRegistry,
     project_id: Uuid,
 ) -> Option<Uuid> {
-    let rows: Vec<(Uuid,)> =
-        sqlx::query_as("SELECT id FROM container_api_keys WHERE project_id = $1 AND revoked_at IS NULL")
-            .bind(project_id)
-            .fetch_all(pool)
-            .await
-            .unwrap_or_default();
+    let rows: Vec<(Uuid,)> = sqlx::query_as(
+        "SELECT id FROM container_api_keys WHERE project_id = $1 AND revoked_at IS NULL",
+    )
+    .bind(project_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
 
     let ids: Vec<Uuid> = rows.into_iter().map(|(id,)| id).collect();
     find_key_in_registry(&ids, registry)

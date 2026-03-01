@@ -22,10 +22,10 @@ use uuid::Uuid;
 
 use server::{
     agents::registry::DashMapRegistry,
-    sse::broadcaster::SseBroadcaster,
     auth::{service::make_claims, types::AuthClaims},
     build_app,
     config::Config,
+    sse::broadcaster::SseBroadcaster,
     state::AppState,
 };
 
@@ -55,7 +55,10 @@ fn test_state(pool: PgPool) -> AppState {
 
 fn test_jwt(user_id: Uuid, org_id: Uuid) -> String {
     let claims = make_claims(user_id, org_id, "owner");
-    let claims = AuthClaims { exp: 9_999_999_999, ..claims };
+    let claims = AuthClaims {
+        exp: 9_999_999_999,
+        ..claims
+    };
     encode(
         &Header::default(),
         &claims,
@@ -71,7 +74,7 @@ async fn seed_user(pool: &PgPool) -> Uuid {
          VALUES ($1, $2, $3, 'test', $4)",
     )
     .bind(id)
-    .bind(format!("user-{}@test.example", id))
+    .bind(format!("user-{id}@test.example"))
     .bind("Test User")
     .bind(id.to_string())
     .execute(pool)
@@ -88,15 +91,13 @@ async fn seed_org(pool: &PgPool, user_id: Uuid) -> Uuid {
         .execute(pool)
         .await
         .unwrap();
-    sqlx::query(
-        "INSERT INTO org_members (id, org_id, user_id, role) VALUES ($1, $2, $3, 'owner')",
-    )
-    .bind(Uuid::now_v7())
-    .bind(org_id)
-    .bind(user_id)
-    .execute(pool)
-    .await
-    .unwrap();
+    sqlx::query("INSERT INTO org_members (id, org_id, user_id, role) VALUES ($1, $2, $3, 'owner')")
+        .bind(Uuid::now_v7())
+        .bind(org_id)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .unwrap();
     org_id
 }
 
@@ -1033,7 +1034,10 @@ async fn full_qa_flow_create_answer_rollback_re_answer(pool: PgPool) {
         .await
         .unwrap();
     let list: Vec<Value> = serde_json::from_value(json_body(list_resp).await).unwrap();
-    let r2 = list.iter().find(|r| r["id"] == round2_id.to_string()).unwrap();
+    let r2 = list
+        .iter()
+        .find(|r| r["id"] == round2_id.to_string())
+        .unwrap();
     assert_eq!(r2["status"], "superseded");
 
     // 6. Re-answer Q1 in round 1 with a different answer

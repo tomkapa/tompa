@@ -2299,7 +2299,7 @@ Start all of these simultaneously:
 - **T04** Error Handling x
 - **T05** DB Pool & RLS x
 - **T06** Auth Module x
-- **T09** Frontend Scaffold v
+- **T09** Frontend Scaffold x
 - **T25** CI/CD Pipeline x
 
 ### Phase 2 — After Phase 1 foundations land

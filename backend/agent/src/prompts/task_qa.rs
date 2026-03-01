@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use shared::types::{KnowledgeEntry, QaDecision, TaskContext};
 
 pub fn build_task_qa_prompt(context: &TaskContext, previous_decisions: &[QaDecision]) -> String {
@@ -72,7 +74,12 @@ fn fmt_decisions(decisions: &[QaDecision]) -> String {
     }
     decisions
         .iter()
-        .map(|d| format!("- [{}] Q: {} → A: {}", d.domain, d.question_text, d.answer_text))
+        .map(|d| {
+            format!(
+                "- [{}] Q: {} → A: {}",
+                d.domain, d.question_text, d.answer_text
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n")
 }

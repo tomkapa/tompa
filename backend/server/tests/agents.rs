@@ -29,10 +29,10 @@ use uuid::Uuid;
 
 use server::{
     agents::registry::DashMapRegistry,
-    sse::broadcaster::SseBroadcaster,
     auth::{service::make_claims, types::AuthClaims},
     build_app,
     config::Config,
+    sse::broadcaster::SseBroadcaster,
     state::AppState,
 };
 
@@ -98,7 +98,7 @@ async fn seed_user(pool: &PgPool) -> Uuid {
          VALUES ($1, $2, $3, 'test', $4)",
     )
     .bind(id)
-    .bind(format!("u-{}@t.example", id))
+    .bind(format!("u-{id}@t.example"))
     .bind("Test User")
     .bind(id.to_string())
     .execute(pool)
@@ -115,15 +115,13 @@ async fn seed_org(pool: &PgPool, user_id: Uuid) -> Uuid {
         .execute(pool)
         .await
         .unwrap();
-    sqlx::query(
-        "INSERT INTO org_members (id, org_id, user_id, role) VALUES ($1, $2, $3, 'owner')",
-    )
-    .bind(Uuid::now_v7())
-    .bind(org_id)
-    .bind(user_id)
-    .execute(pool)
-    .await
-    .unwrap();
+    sqlx::query("INSERT INTO org_members (id, org_id, user_id, role) VALUES ($1, $2, $3, 'owner')")
+        .bind(Uuid::now_v7())
+        .bind(org_id)
+        .bind(user_id)
+        .execute(pool)
+        .await
+        .unwrap();
     org_id
 }
 
@@ -164,10 +162,7 @@ async fn resp_json(resp: Response) -> Value {
 #[sqlx::test(migrator = "MIGRATOR")]
 async fn ws_upgrade_without_auth_returns_401(pool: PgPool) {
     let app = build_app(test_state(pool));
-    let resp = app
-        .oneshot(ws_upgrade_request(None))
-        .await
-        .unwrap();
+    let resp = app.oneshot(ws_upgrade_request(None)).await.unwrap();
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
 
