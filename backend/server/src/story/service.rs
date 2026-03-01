@@ -114,15 +114,15 @@ pub async fn update_story(
     req: UpdateStoryRequest,
 ) -> Result<StoryResponse, ApiError> {
     // Validate inputs before touching the DB
-    if let Some(ref t) = req.title {
-        if t.trim().is_empty() {
-            return Err(StoryError::TitleRequired.into());
-        }
+    if let Some(ref t) = req.title
+        && t.trim().is_empty()
+    {
+        return Err(StoryError::TitleRequired.into());
     }
-    if let Some(ref stage) = req.pipeline_stage {
-        if !VALID_PIPELINE_STAGES.contains(&stage.as_str()) {
-            return Err(StoryError::InvalidPipelineStage.into());
-        }
+    if let Some(ref stage) = req.pipeline_stage
+        && !VALID_PIPELINE_STAGES.contains(&stage.as_str())
+    {
+        return Err(StoryError::InvalidPipelineStage.into());
     }
 
     let mut tx = state.pool.begin().await?;

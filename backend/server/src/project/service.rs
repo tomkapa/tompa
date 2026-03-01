@@ -73,10 +73,10 @@ pub async fn update_project(
     id: Uuid,
     req: UpdateProjectRequest,
 ) -> Result<ProjectResponse, ApiError> {
-    if let Some(ref n) = req.name {
-        if n.trim().is_empty() {
-            return Err(ProjectError::NameRequired.into());
-        }
+    if let Some(ref n) = req.name
+        && n.trim().is_empty()
+    {
+        return Err(ProjectError::NameRequired.into());
     }
     let mut tx = state.pool.begin().await?;
     set_org_context(&mut tx, org_id).await?;

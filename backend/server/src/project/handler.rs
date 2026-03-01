@@ -49,10 +49,10 @@ pub(crate) async fn list_projects(
     Extension(auth): Extension<AuthContext>,
     Query(params): Query<ListProjectsParams>,
 ) -> Result<Json<Vec<ProjectResponse>>, ApiError> {
-    if let Some(org_id) = params.org_id {
-        if org_id != auth.org_id {
-            return Err(ApiError::Forbidden);
-        }
+    if let Some(org_id) = params.org_id
+        && org_id != auth.org_id
+    {
+        return Err(ApiError::Forbidden);
     }
     let projects = service::list_projects(&state, auth.org_id).await?;
     Ok(Json(projects))

@@ -158,18 +158,18 @@ impl Dispatcher {
             } => {
                 // If git is running, delegate commit+push to git manager (T21).
                 // Git will send CommitComplete with the authoritative SHA.
-                if let Some(git_tx) = &self.git_tx {
-                    if let Some((story_id, worktree)) = self.task_worktrees.get(&task_id) {
-                        let msg = GitMessage::CommitAndPush {
-                            story_id: *story_id,
-                            task_id,
-                            worktree: worktree.clone(),
-                        };
-                        if git_tx.send(msg).await.is_err() {
-                            error!("git_manager actor disconnected during CommitAndPush");
-                        }
-                        return; // wait for CommitComplete / CommitFailed
+                if let Some(git_tx) = &self.git_tx
+                    && let Some((story_id, worktree)) = self.task_worktrees.get(&task_id)
+                {
+                    let msg = GitMessage::CommitAndPush {
+                        story_id: *story_id,
+                        task_id,
+                        worktree: worktree.clone(),
+                    };
+                    if git_tx.send(msg).await.is_err() {
+                        error!("git_manager actor disconnected during CommitAndPush");
                     }
+                    return; // wait for CommitComplete / CommitFailed
                 }
                 // No git manager or no tracked worktree — forward directly to WS.
                 self.send_to_ws(WsClientMessage::Send(ContainerToServer::TaskCompleted {

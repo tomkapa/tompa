@@ -1,49 +1,121 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap');
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-tile: var(--tile);
+
+  --font-sans: 'Inter', system-ui, sans-serif;
+}
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 240 5.9% 10%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 240 10% 3.9%;
-    --radius: 0.5rem;
+    /* Halo Design System — Light Mode */
+    --background: #FFFFFF;
+    --foreground: #2A2933;
+    --card: #FFFFFF;
+    --card-foreground: #2A2933;
+    --popover: #FFFFFF;
+    --popover-foreground: #2A2933;
+    --primary: #5749F4;
+    --primary-foreground: #FFFFFF;
+    --secondary: #D9D9DB;
+    --secondary-foreground: #2A2933;
+    --muted: #F5F5F5;
+    --muted-foreground: #616167;
+    --accent: #F5F5F5;
+    --accent-foreground: #2A2933;
+    --destructive: #CC3314;
+    --destructive-foreground: #FFFFFF;
+    --border: #C5C5CB;
+    --input: #C5C5CB;
+    --ring: #E1E2E5;
+    --sidebar: #FFFFFF;
+    --sidebar-foreground: #939399;
+    --sidebar-accent: #F5F5F5;
+    --sidebar-accent-foreground: #2A2933;
+    --sidebar-border: #D9D9DB;
+    --sidebar-primary: #F5F5F5;
+    --sidebar-primary-foreground: #2A2933;
+    --sidebar-ring: #D9D9DB;
+    --tile: #F5F5F5;
+
+    /* Semantic colors */
+    --color-success: #A1E5A1;
+    --color-success-foreground: #003300;
+    --color-warning: #FFD9B2;
+    --color-warning-foreground: #4D2700;
+    --color-error: #FFBFB2;
+    --color-error-foreground: #590F00;
+    --color-info: #C9D6F0;
+    --color-info-foreground: #001133;
   }
 
   .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 240 4.9% 83.9%;
+    /* Halo Design System — Dark Mode */
+    --background: #131124;
+    --foreground: #E8E8EA;
+    --card: #1A182E;
+    --card-foreground: #FFFFFF;
+    --popover: #1A182E;
+    --popover-foreground: #FFFFFF;
+    --primary: #5749F4;
+    --primary-foreground: #FFFFFF;
+    --secondary: #403F51;
+    --secondary-foreground: #FFFFFF;
+    --muted: #2E2E2E;
+    --muted-foreground: #888799;
+    --accent: #131124;
+    --accent-foreground: #F2F3F0;
+    --destructive: #CC3314;
+    --destructive-foreground: #FFFFFF;
+    --border: #2B283D;
+    --input: #2B283D;
+    --ring: #666666;
+    --sidebar: #1A182E;
+    --sidebar-foreground: #ACABB2;
+    --sidebar-accent: #2B283D;
+    --sidebar-accent-foreground: #E8E8EA;
+    --sidebar-border: #2B283D;
+    --sidebar-primary: #0F5FFE;
+    --sidebar-primary-foreground: #E8E8EA;
+    --sidebar-ring: #2B283D;
+    --tile: #1A182E;
+
+    /* Semantic colors */
+    --color-success: #3B4748;
+    --color-success-foreground: #A1E5A1;
+    --color-warning: #53484F;
+    --color-warning-foreground: #FFD9B2;
+    --color-error: #53424F;
+    --color-error-foreground: #FFBFB2;
+    --color-info: #404562;
+    --color-info-foreground: #B2CCFF;
   }
 }
 
@@ -53,7 +125,7 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: system-ui, sans-serif;
+    font-family: 'Inter', system-ui, sans-serif;
     font-synthesis: none;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;

@@ -104,10 +104,10 @@ fn would_create_cycle(edges: &[(Uuid, Uuid)], task_id: Uuid, depends_on: Uuid) -
         if curr == task_id {
             return true;
         }
-        if visited.insert(curr) {
-            if let Some(neighbors) = adj.get(&curr) {
-                stack.extend(neighbors);
-            }
+        if visited.insert(curr)
+            && let Some(neighbors) = adj.get(&curr)
+        {
+            stack.extend(neighbors);
         }
     }
     false

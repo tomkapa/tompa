@@ -19,6 +19,7 @@ export const useUIStore = create<UIStore>((set) => ({
     })),
   clearDraft: (id) =>
     set((state) => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { [id]: _, ...rest } = state.courseCorrectionDraft
       return { courseCorrectionDraft: rest }
     }),

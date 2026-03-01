@@ -8,10 +8,12 @@ import {
 import { QueryClient } from '@tanstack/react-query'
 
 // ── Pages (placeholders) ─────────────────────────────────────────────────────
+// eslint-disable-next-line react-refresh/only-export-components
 function LoginPage() {
   return <div className="p-8">Login</div>
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 function ProjectPage() {
   return (
     <div className="p-8">
@@ -20,10 +22,12 @@ function ProjectPage() {
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 function StoriesTable() {
   return <div>Stories table</div>
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 function StoryModal() {
   return (
     <div>
@@ -33,6 +37,7 @@ function StoryModal() {
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 function TaskDetail() {
   return <div>Task detail</div>
 }
@@ -89,6 +94,7 @@ const routeTree = rootRoute.addChildren([
   ]),
 ])
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function createAppRouter(_queryClient: QueryClient) {
   return createRouter({ routeTree })
 }

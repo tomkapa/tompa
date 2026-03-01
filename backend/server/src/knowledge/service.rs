@@ -76,20 +76,20 @@ pub async fn update_knowledge(
     id: Uuid,
     req: UpdateKnowledgeRequest,
 ) -> Result<KnowledgeResponse, ApiError> {
-    if let Some(ref t) = req.title {
-        if t.trim().is_empty() {
-            return Err(KnowledgeError::TitleRequired.into());
-        }
+    if let Some(ref t) = req.title
+        && t.trim().is_empty()
+    {
+        return Err(KnowledgeError::TitleRequired.into());
     }
-    if let Some(ref c) = req.content {
-        if c.trim().is_empty() {
-            return Err(KnowledgeError::ContentRequired.into());
-        }
+    if let Some(ref c) = req.content
+        && c.trim().is_empty()
+    {
+        return Err(KnowledgeError::ContentRequired.into());
     }
-    if let Some(ref cat) = req.category {
-        if !is_valid_category(cat.trim()) {
-            return Err(KnowledgeError::InvalidCategory.into());
-        }
+    if let Some(ref cat) = req.category
+        && !is_valid_category(cat.trim())
+    {
+        return Err(KnowledgeError::InvalidCategory.into());
     }
     let mut tx = state.pool.begin().await?;
     set_org_context(&mut tx, org_id).await?;

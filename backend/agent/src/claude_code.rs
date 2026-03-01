@@ -798,10 +798,10 @@ pub(crate) fn strip_markdown_fences(s: &str) -> &str {
         .strip_prefix("```json")
         .or_else(|| s.strip_prefix("```"))
         .map(str::trim_start);
-    if let Some(inner) = after_open {
-        if let Some(before_close) = inner.strip_suffix("```") {
-            return before_close.trim();
-        }
+    if let Some(inner) = after_open
+        && let Some(before_close) = inner.strip_suffix("```")
+    {
+        return before_close.trim();
     }
     s
 }
