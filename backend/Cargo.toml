@@ -30,7 +30,14 @@ reqwest = { version = "0.13", features = ["json", "form"] }
 tokio-tungstenite = { version = "0.28", features = ["native-tls"] }
 
 # Database
-sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "uuid", "chrono", "json", "macros"] }
+sqlx = { version = "0.8", features = [
+    "runtime-tokio",
+    "postgres",
+    "uuid",
+    "chrono",
+    "json",
+    "macros",
+] }
 dashmap = "6"
 
 # Auth
@@ -57,4 +64,4 @@ rust-embed = "8"
 
 # Test
 tempfile = "3"
-ctor = "0.4"
+ctor = "0.6"
