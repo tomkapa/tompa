@@ -1,0 +1,11 @@
+{
+  "pipeline": {
+    "input": "./src/api/openapi.json",
+    "output": {
+      "target": "./src/api/generated",
+      "client": "react-query",
+      "httpClient": "fetch",
+      "mode": "tags-split"
+    }
+  }
+}

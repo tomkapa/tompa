@@ -1,0 +1,147 @@
+use std::{
+    sync::{
+        atomic::{AtomicU8, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
+
+use axum::{
+    extract::{
+        ws::{Message, WebSocket, WebSocketUpgrade},
+        State,
+    },
+    http::{header, HeaderMap, StatusCode},
+    response::IntoResponse,
+    routing::get,
+    Router,
+};
+use futures_util::{SinkExt, StreamExt};
+use shared::messages::{ContainerToServer, ServerToContainer};
+use tokio::sync::mpsc;
+
+use crate::{
+    agents::service,
+    auth::types::AuthError,
+    container_keys::{repo as key_repo, service::verify_api_key, types::ContainerKeyInfo},
+    state::AppState,
+};
+
+const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
+const MAX_MISSED_PONGS: u8 = 2;
+
+pub fn router(state: AppState) -> Router<AppState> {
+    Router::new()
+        .route("/ws/container", get(ws_handler))
+        .with_state(state)
+}
+
+/// `GET /ws/container`
+///
+/// Performs Bearer-token authentication before accepting the WebSocket
+/// upgrade.  Returns 401 if the token is absent or invalid.
+async fn ws_handler(
+    State(state): State<AppState>,
+    ws: WebSocketUpgrade,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    let raw_key = match extract_bearer(&headers) {
+        Some(k) => k,
+        None => return StatusCode::UNAUTHORIZED.into_response(),
+    };
+
+    let key_info = match verify_api_key(&state.pool, &raw_key).await {
+        Ok(info) => info,
+        Err(AuthError::InvalidToken) => return StatusCode::UNAUTHORIZED.into_response(),
+    };
+
+    ws.on_upgrade(move |socket| handle_socket(socket, state, key_info))
+}
+
+fn extract_bearer(headers: &HeaderMap) -> Option<String> {
+    let value = headers.get(header::AUTHORIZATION)?;
+    let s = value.to_str().ok()?;
+    s.strip_prefix("Bearer ").map(str::to_string)
+}
+
+async fn handle_socket(socket: WebSocket, state: AppState, key_info: ContainerKeyInfo) {
+    let key_id = key_info.key_id;
+
+    // Stamp last_connected_at (best-effort — do not abort on DB failure).
+    let _ = key_repo::update_last_connected(&state.pool, key_id).await;
+
+    let (mut ws_tx, mut ws_rx) = socket.split();
+    let (msg_tx, mut msg_rx) = mpsc::unbounded_channel::<ServerToContainer>();
+
+    // The sender lives in the registry; external callers use `registry.send_to`
+    // to enqueue outbound messages.
+    state.registry.register(key_id, msg_tx);
+
+    // Write task — drains the outbound channel, serialises each message, and
+    // forwards it to the WebSocket sink.
+    let write_handle = tokio::spawn(async move {
+        while let Some(msg) = msg_rx.recv().await {
+            let text = match serde_json::to_string(&msg) {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
+            if ws_tx.send(Message::Text(text.into())).await.is_err() {
+                break;
+            }
+        }
+    });
+
+    // Read + heartbeat loop runs on the current task so we can return a
+    // single cleanup point.
+    let missed_pongs = Arc::new(AtomicU8::new(0));
+    let mut interval = tokio::time::interval(HEARTBEAT_INTERVAL);
+    // Skip the immediate first tick so the first ping fires after the full
+    // interval, not instantly on connect.
+    interval.tick().await;
+
+    loop {
+        tokio::select! {
+            biased;
+
+            frame = ws_rx.next() => {
+                match frame {
+                    Some(Ok(Message::Text(text))) => {
+                        match serde_json::from_str::<ContainerToServer>(&text) {
+                            Ok(ContainerToServer::Pong) => {
+                                missed_pongs.store(0, Ordering::Relaxed);
+                            }
+                            Ok(msg) => dispatch(&state, &key_info, msg).await,
+                            Err(_) => {} // ignore malformed frames
+                        }
+                    }
+                    // Graceful close, stream end, or transport error.
+                    Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
+                    _ => {} // Binary / Ping / Pong frames — not expected, ignore
+                }
+            }
+
+            _ = interval.tick() => {
+                if missed_pongs.load(Ordering::Relaxed) >= MAX_MISSED_PONGS {
+                    // Two consecutive pings without a pong → treat as dead.
+                    break;
+                }
+                missed_pongs.fetch_add(1, Ordering::Relaxed);
+                // Ignore send errors; the write task will fail naturally once
+                // the channel is closed after `unregister`.
+                let _ = state.registry.send_to(key_id, ServerToContainer::Ping);
+            }
+        }
+    }
+
+    // Cancel the write task and remove the connection from the registry.
+    // Dropping the registry entry closes the channel, which causes msg_rx
+    // inside the write task to return None — but we abort proactively to
+    // avoid any delay.
+    write_handle.abort();
+    state.registry.unregister(key_id);
+}
+
+/// Route an authenticated `ContainerToServer` message to the service layer.
+async fn dispatch(state: &AppState, key_info: &ContainerKeyInfo, msg: ContainerToServer) {
+    service::handle_message(state, key_info, msg).await;
+}

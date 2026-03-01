@@ -1,0 +1,27 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO users (id, email, display_name, avatar_url, oauth_provider, oauth_provider_id)\n        VALUES ($1, $2, $3, $4, $5, $6)\n        ON CONFLICT (oauth_provider, oauth_provider_id) DO UPDATE\n            SET email        = EXCLUDED.email,\n                display_name = EXCLUDED.display_name,\n                avatar_url   = EXCLUDED.avatar_url,\n                updated_at   = now()\n        RETURNING id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "da30f684c346852379156650922c6771939ac71cbe824ee91aae312c385d1730"
+}

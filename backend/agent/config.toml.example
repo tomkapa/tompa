@@ -1,0 +1,6 @@
+mode = "standalone"           # "project" | "dev" | "standalone"
+server_url = "wss://app.yourdomain.com/ws/container"
+api_key = "cpk_..."
+github_repo_url = "https://github.com/org/repo"
+github_access_token = "ghp_..."
+setup_ui_port = 3001

@@ -1,0 +1,30 @@
+[package]
+name = "agent"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "agent"
+path = "src/main.rs"
+
+[dependencies]
+shared = { path = "../shared" }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+anyhow = "1"
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+futures-util = "0.3"
+serde_json = "1"
+rand = "0.8"
+gix = { version = "0.68", default-features = false, features = ["revision"] }
+axum = { version = "0.8", features = ["json"] }
+rust-embed = "8"
+tower = { version = "0.5", features = ["util"] }
+
+[dev-dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+tempfile = "3"

@@ -1,0 +1,3 @@
+- Reference doc/spec.md for the product specification
+- Reference doc/tech.md for the technical architecture decisions
+- Reference doc/atomic_design.md for the UI/UX design requirements

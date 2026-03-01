@@ -1,0 +1,54 @@
+# Default Helm values for the tompa application.
+# The `image.tag` fields are updated automatically by CI on every merge to main.
+
+server:
+  image:
+    repository: ghcr.io/tompaka/tompa
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicas: 1
+  port: 3000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+agent:
+  # Agent containers are customer self-hosted — not deployed by this chart.
+  # Tags here are updated by CI and referenced by container setup documentation.
+  image:
+    repository: ghcr.io/placeholder/agent
+    tag: latest
+    pullPolicy: IfNotPresent
+  port: 3001
+
+ingress:
+  enabled: true
+  className: nginx
+  host: app.yourdomain.com
+  annotations:
+    # Long timeouts required for SSE (story updates) and WebSocket (container connections)
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    # Per-IP rate limiting to guard against abuse
+    nginx.ingress.kubernetes.io/limit-connections: "5"
+    nginx.ingress.kubernetes.io/limit-rps: "20"
+  tls:
+    enabled: true
+    secretName: tompa-tls
+
+# Non-secret runtime configuration (mounted as env vars via ConfigMap)
+config:
+  rustLog: "tompa=info,tower_http=debug,sqlx=warn"
+  port: "3000"
+
+# External Secrets Operator — pulls secrets from OpenBao into a k8s Secret
+externalSecret:
+  refreshInterval: "1h"
+  secretStoreName: "openbao"
+  secretStoreKind: "ClusterSecretStore"
+  # Path in OpenBao where application secrets are stored
+  vaultPath: "secret/data/tompa"
