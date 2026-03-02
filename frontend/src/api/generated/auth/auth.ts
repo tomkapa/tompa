@@ -25,6 +25,7 @@ import type {
 
 import type {
   CallbackParams,
+  DevLoginRequest,
   MeResponse
 } from '../tompaAPI.schemas';
 
@@ -33,8 +34,8 @@ import type {
 
 
 /**
- * Exchanges the OAuth code, upserts the user, sets the session cookie.
  * @summary GET /api/v1/auth/callback/:provider
+Exchanges the OAuth code, upserts the user, sets the session cookie.
  */
 export type callbackResponse302 = {
   data: void
@@ -151,6 +152,7 @@ export function useCallback<TData = Awaited<ReturnType<typeof callback>>, TError
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
  * @summary GET /api/v1/auth/callback/:provider
+Exchanges the OAuth code, upserts the user, sets the session cookie.
  */
 
 export function useCallback<TData = Awaited<ReturnType<typeof callback>>, TError = void>(
@@ -170,8 +172,103 @@ export function useCallback<TData = Awaited<ReturnType<typeof callback>>, TError
 
 
 /**
- * Redirects the browser to the OAuth consent screen.
+ * @summary POST /api/v1/auth/dev-login
+Creates a session without OAuth. Only available when `DEV_MODE=true`.
+ */
+export type devLoginResponse302 = {
+  data: void
+  status: 302
+}
+
+export type devLoginResponse403 = {
+  data: void
+  status: 403
+}
+
+;
+export type devLoginResponseError = (devLoginResponse302 | devLoginResponse403) & {
+  headers: Headers;
+};
+
+export type devLoginResponse = (devLoginResponseError)
+
+export const getDevLoginUrl = () => {
+
+
+  
+
+  return `/api/v1/auth/dev-login`
+}
+
+export const devLogin = async (devLoginRequest: DevLoginRequest, options?: RequestInit): Promise<devLoginResponse> => {
+  
+  const res = await fetch(getDevLoginUrl(),
+  {      
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      devLoginRequest,)
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+  
+  const data: devLoginResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as devLoginResponse
+}
+  
+
+
+
+export const getDevLoginMutationOptions = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof devLogin>>, TError,{data: DevLoginRequest}, TContext>, fetch?: RequestInit}
+): UseMutationOptions<Awaited<ReturnType<typeof devLogin>>, TError,{data: DevLoginRequest}, TContext> => {
+
+const mutationKey = ['devLogin'];
+const {mutation: mutationOptions, fetch: fetchOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, fetch: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof devLogin>>, {data: DevLoginRequest}> = (props) => {
+          const {data} = props ?? {};
+
+          return  devLogin(data,fetchOptions)
+        }
+
+
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DevLoginMutationResult = NonNullable<Awaited<ReturnType<typeof devLogin>>>
+    export type DevLoginMutationBody = DevLoginRequest
+    export type DevLoginMutationError = void
+
+    /**
+ * @summary POST /api/v1/auth/dev-login
+Creates a session without OAuth. Only available when `DEV_MODE=true`.
+ */
+export const useDevLogin = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof devLogin>>, TError,{data: DevLoginRequest}, TContext>, fetch?: RequestInit}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof devLogin>>,
+        TError,
+        {data: DevLoginRequest},
+        TContext
+      > => {
+      return useMutation(getDevLoginMutationOptions(options), queryClient);
+    }
+    /**
  * @summary GET /api/v1/auth/login/:provider
+Redirects the browser to the OAuth consent screen.
  */
 export type loginResponse302 = {
   data: void
@@ -274,6 +371,7 @@ export function useLogin<TData = Awaited<ReturnType<typeof login>>, TError = voi
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
  * @summary GET /api/v1/auth/login/:provider
+Redirects the browser to the OAuth consent screen.
  */
 
 export function useLogin<TData = Awaited<ReturnType<typeof login>>, TError = void>(
@@ -292,8 +390,8 @@ export function useLogin<TData = Awaited<ReturnType<typeof login>>, TError = voi
 
 
 /**
- * Clears the session cookie.
  * @summary POST /api/v1/auth/logout
+Clears the session cookie.
  */
 export type logoutResponse200 = {
   data: void
@@ -368,6 +466,7 @@ const {mutation: mutationOptions, fetch: fetchOptions} = options ?
 
     /**
  * @summary POST /api/v1/auth/logout
+Clears the session cookie.
  */
 export const useLogout = <TError = unknown,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logout>>, TError,void, TContext>, fetch?: RequestInit}
@@ -380,8 +479,8 @@ export const useLogout = <TError = unknown,
       return useMutation(getLogoutMutationOptions(options), queryClient);
     }
     /**
- * Returns the current user's profile and org membership info.
  * @summary GET /api/v1/auth/me
+Returns the current user's profile and org membership info.
  */
 export type meResponse200 = {
   data: MeResponse
@@ -486,6 +585,7 @@ export function useMe<TData = Awaited<ReturnType<typeof me>>, TError = void>(
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
  * @summary GET /api/v1/auth/me
+Returns the current user's profile and org membership info.
  */
 
 export function useMe<TData = Awaited<ReturnType<typeof me>>, TError = void>(

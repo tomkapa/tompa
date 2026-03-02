@@ -80,6 +80,11 @@ export interface DependencyResponse {
   task_id: string;
 }
 
+export interface DevLoginRequest {
+  display_name: string;
+  email: string;
+}
+
 /**
  * Safe list view — never includes the key hash.
  */
@@ -312,40 +317,34 @@ project_id: string;
 export type ListKnowledgeParams = {
 /**
  * Filter by project ID
- * @nullable
  */
-project_id?: string | null;
+project_id?: string;
 /**
  * Filter by story ID
- * @nullable
  */
-story_id?: string | null;
+story_id?: string;
 };
 
 export type ListProjectsParams = {
 /**
  * Optional org filter (must match session org)
- * @nullable
  */
-org_id?: string | null;
+org_id?: string;
 };
 
 export type ListRoundsParams = {
 /**
  * Filter by story ID
- * @nullable
  */
-story_id?: string | null;
+story_id?: string;
 /**
  * Filter by task ID
- * @nullable
  */
-task_id?: string | null;
+task_id?: string;
 /**
  * Filter by stage: grooming, planning, task_qa, implementation
- * @nullable
  */
-stage?: string | null;
+stage?: string;
 };
 
 export type ListStoriesParams = {
