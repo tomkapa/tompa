@@ -50,7 +50,7 @@ fn extract_session_cookie(headers: &axum::http::HeaderMap) -> Option<String> {
 /// Set the Postgres session variable used by RLS policies.
 /// Must be called inside an active transaction; `SET LOCAL` is reset on commit/rollback.
 ///
-/// ```rust
+/// ```rust,ignore
 /// let mut tx = pool.begin().await?;
 /// set_org_context(&mut tx, auth.org_id).await?;
 /// // ... tenant-scoped queries ...

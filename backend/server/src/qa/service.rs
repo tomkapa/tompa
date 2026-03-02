@@ -46,6 +46,7 @@ pub async fn list_rounds(
 
     let rows = repo::list_rounds(
         &mut tx,
+        org_id,
         params.story_id,
         params.task_id,
         params.stage.as_deref(),
@@ -66,7 +67,7 @@ pub async fn submit_answer(
     let mut tx = state.pool.begin().await?;
     set_org_context(&mut tx, org_id).await?;
 
-    let row = repo::get_round(&mut tx, round_id)
+    let row = repo::get_round(&mut tx, round_id, org_id)
         .await?
         .ok_or(QaError::NotFound)?;
 
@@ -95,7 +96,7 @@ pub async fn submit_answer(
     let new_content = serde_json::to_value(&content)
         .map_err(|e| ApiError::Internal(anyhow::anyhow!("Failed to serialize QA content: {e}")))?;
 
-    let updated = repo::update_round_content(&mut tx, round_id, &new_content)
+    let updated = repo::update_round_content(&mut tx, round_id, org_id, &new_content)
         .await?
         .ok_or(QaError::NotFound)?;
     tx.commit().await?;
@@ -111,7 +112,7 @@ pub async fn rollback(
     let mut tx = state.pool.begin().await?;
     set_org_context(&mut tx, org_id).await?;
 
-    let row = repo::get_round(&mut tx, round_id)
+    let row = repo::get_round(&mut tx, round_id, org_id)
         .await?
         .ok_or(QaError::NotFound)?;
 
@@ -143,7 +144,7 @@ pub async fn rollback(
     let new_content = serde_json::to_value(&content)
         .map_err(|e| ApiError::Internal(anyhow::anyhow!("Failed to serialize QA content: {e}")))?;
 
-    let updated = repo::update_round_content(&mut tx, round_id, &new_content)
+    let updated = repo::update_round_content(&mut tx, round_id, org_id, &new_content)
         .await?
         .ok_or(QaError::NotFound)?;
     tx.commit().await?;

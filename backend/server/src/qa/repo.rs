@@ -29,14 +29,15 @@ const ROUND_COLUMNS: &str =
 /// optional stage filter. Ordered by round_number ascending.
 pub async fn list_rounds(
     tx: &mut sqlx::Transaction<'_, Postgres>,
+    org_id: Uuid,
     story_id: Option<Uuid>,
     task_id: Option<Uuid>,
     stage: Option<&str>,
 ) -> Result<Vec<QaRoundRow>, sqlx::Error> {
     // Build query dynamically based on which filter combination is provided.
     // Either task_id or story_id (story-level, task_id IS NULL) must be present.
-    let mut conditions: Vec<String> = Vec::new();
-    let mut idx = 1u32;
+    let mut conditions: Vec<String> = vec!["org_id = $1".to_string()];
+    let mut idx = 2u32;
 
     if task_id.is_some() {
         conditions.push(format!("task_id = ${idx}"));
@@ -51,16 +52,13 @@ pub async fn list_rounds(
         conditions.push(format!("stage = ${idx}"));
     }
 
-    let where_clause = if conditions.is_empty() {
-        "TRUE".to_string()
-    } else {
-        conditions.join(" AND ")
-    };
+    let where_clause = conditions.join(" AND ");
 
     let sql =
         format!("SELECT {ROUND_COLUMNS} FROM qa_rounds WHERE {where_clause} ORDER BY round_number");
 
     let mut q = sqlx::query_as::<_, QaRoundRow>(&sql);
+    q = q.bind(org_id);
     if let Some(tid) = task_id {
         q = q.bind(tid);
     } else if let Some(sid) = story_id {
@@ -72,15 +70,17 @@ pub async fn list_rounds(
     q.fetch_all(&mut **tx).await
 }
 
-/// Fetch a single round by id (RLS-scoped to current org).
+/// Fetch a single round by id, scoped to org_id.
 pub async fn get_round(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     id: Uuid,
+    org_id: Uuid,
 ) -> Result<Option<QaRoundRow>, sqlx::Error> {
     sqlx::query_as::<_, QaRoundRow>(&format!(
-        "SELECT {ROUND_COLUMNS} FROM qa_rounds WHERE id = $1"
+        "SELECT {ROUND_COLUMNS} FROM qa_rounds WHERE id = $1 AND org_id = $2"
     ))
     .bind(id)
+    .bind(org_id)
     .fetch_optional(&mut **tx)
     .await
 }
@@ -149,15 +149,17 @@ pub async fn create_round(
 pub async fn update_round_content(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     id: Uuid,
+    org_id: Uuid,
     content: &serde_json::Value,
 ) -> Result<Option<QaRoundRow>, sqlx::Error> {
     sqlx::query_as::<_, QaRoundRow>(&format!(
         "UPDATE qa_rounds SET content = $2, updated_at = now()
-         WHERE id = $1
+         WHERE id = $1 AND org_id = $3
          RETURNING {ROUND_COLUMNS}"
     ))
     .bind(id)
     .bind(content)
+    .bind(org_id)
     .fetch_optional(&mut **tx)
     .await
 }

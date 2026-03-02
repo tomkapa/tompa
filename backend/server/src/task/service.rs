@@ -148,7 +148,7 @@ pub async fn get_task(state: &AppState, org_id: Uuid, id: Uuid) -> Result<TaskRe
     let mut tx = state.pool.begin().await?;
     set_org_context(&mut tx, org_id).await?;
 
-    let row = repo::get_task(&mut tx, id)
+    let row = repo::get_task(&mut tx, id, org_id)
         .await?
         .ok_or(ApiError::NotFound)?;
 
@@ -176,10 +176,11 @@ pub async fn create_task(
     let mut tx = state.pool.begin().await?;
     set_org_context(&mut tx, org_id).await?;
 
-    // Verify the story exists in this org (RLS ensures org scoping)
+    // Verify the story exists in this org
     let story_exists: Option<(Uuid,)> =
-        sqlx::query_as("SELECT id FROM stories WHERE id = $1 AND deleted_at IS NULL")
+        sqlx::query_as("SELECT id FROM stories WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL")
             .bind(req.story_id)
+            .bind(org_id)
             .fetch_optional(&mut *tx)
             .await?;
 
@@ -212,7 +213,7 @@ pub async fn update_task(
     let mut tx = state.pool.begin().await?;
     set_org_context(&mut tx, org_id).await?;
 
-    let current = repo::get_task(&mut tx, id)
+    let current = repo::get_task(&mut tx, id, org_id)
         .await?
         .ok_or(ApiError::NotFound)?;
 
@@ -223,6 +224,7 @@ pub async fn update_task(
     let updated = repo::update_task(
         &mut tx,
         id,
+        org_id,
         req.name.as_deref(),
         req.description.as_deref(),
         req.position,
@@ -243,7 +245,7 @@ pub async fn delete_task(state: &AppState, org_id: Uuid, id: Uuid) -> Result<(),
     let mut tx = state.pool.begin().await?;
     set_org_context(&mut tx, org_id).await?;
 
-    let deleted = repo::soft_delete_task(&mut tx, id).await?;
+    let deleted = repo::soft_delete_task(&mut tx, id, org_id).await?;
     tx.commit().await?;
 
     if !deleted {
@@ -256,7 +258,7 @@ pub async fn mark_done(state: &AppState, org_id: Uuid, id: Uuid) -> Result<TaskR
     let mut tx = state.pool.begin().await?;
     set_org_context(&mut tx, org_id).await?;
 
-    let current = repo::get_task(&mut tx, id)
+    let current = repo::get_task(&mut tx, id, org_id)
         .await?
         .ok_or(ApiError::NotFound)?;
 
@@ -264,7 +266,7 @@ pub async fn mark_done(state: &AppState, org_id: Uuid, id: Uuid) -> Result<TaskR
         return Err(TaskError::NotRunning.into());
     }
 
-    let updated = repo::mark_done(&mut tx, id)
+    let updated = repo::mark_done(&mut tx, id, org_id)
         .await?
         .ok_or(ApiError::NotFound)?;
 
@@ -305,11 +307,11 @@ pub async fn create_dependency(
     set_org_context(&mut tx, org_id).await?;
 
     // Verify both tasks exist and share a story
-    let task = repo::get_task(&mut tx, req.task_id)
+    let task = repo::get_task(&mut tx, req.task_id, org_id)
         .await?
         .ok_or(ApiError::NotFound)?;
 
-    let depends_on = repo::get_task(&mut tx, req.depends_on_task_id)
+    let depends_on = repo::get_task(&mut tx, req.depends_on_task_id, org_id)
         .await?
         .ok_or(ApiError::NotFound)?;
 

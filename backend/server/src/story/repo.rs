@@ -41,28 +41,32 @@ const STORY_COLUMNS: &str = r#"
 /// List non-deleted stories for a project, ordered by rank ascending.
 pub async fn list_stories(
     tx: &mut sqlx::Transaction<'_, Postgres>,
+    org_id: Uuid,
     project_id: Uuid,
 ) -> Result<Vec<StoryRow>, sqlx::Error> {
     sqlx::query_as::<_, StoryRow>(&format!(
         "SELECT {STORY_COLUMNS} FROM stories
-         WHERE project_id = $1 AND deleted_at IS NULL
+         WHERE project_id = $1 AND org_id = $2 AND deleted_at IS NULL
          ORDER BY rank"
     ))
     .bind(project_id)
+    .bind(org_id)
     .fetch_all(&mut **tx)
     .await
 }
 
-/// Fetch a single story by id (RLS-scoped to current org).
+/// Fetch a single story by id, scoped to org_id.
 pub async fn get_story(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     id: Uuid,
+    org_id: Uuid,
 ) -> Result<Option<StoryRow>, sqlx::Error> {
     sqlx::query_as::<_, StoryRow>(&format!(
         "SELECT {STORY_COLUMNS} FROM stories
-         WHERE id = $1 AND deleted_at IS NULL"
+         WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL"
     ))
     .bind(id)
+    .bind(org_id)
     .fetch_optional(&mut **tx)
     .await
 }
@@ -136,6 +140,7 @@ pub async fn create_story(
 pub async fn update_story(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     id: Uuid,
+    org_id: Uuid,
     title: Option<&str>,
     description: Option<&str>,
     status: Option<&str>,
@@ -150,7 +155,7 @@ pub async fn update_story(
              owner_id       = COALESCE($5, owner_id),
              pipeline_stage = COALESCE($6, pipeline_stage),
              updated_at     = now()
-         WHERE id = $1 AND deleted_at IS NULL
+         WHERE id = $1 AND org_id = $7 AND deleted_at IS NULL
          RETURNING {STORY_COLUMNS}"
     ))
     .bind(id)
@@ -159,6 +164,7 @@ pub async fn update_story(
     .bind(status)
     .bind(owner_id)
     .bind(pipeline_stage)
+    .bind(org_id)
     .fetch_optional(&mut **tx)
     .await
 }
@@ -167,6 +173,7 @@ pub async fn update_story(
 pub async fn start_story(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     id: Uuid,
+    org_id: Uuid,
     pipeline_stage: &str,
 ) -> Result<Option<StoryRow>, sqlx::Error> {
     sqlx::query_as::<_, StoryRow>(&format!(
@@ -174,11 +181,12 @@ pub async fn start_story(
              status         = 'in_progress',
              pipeline_stage = $2,
              updated_at     = now()
-         WHERE id = $1 AND deleted_at IS NULL
+         WHERE id = $1 AND org_id = $3 AND deleted_at IS NULL
          RETURNING {STORY_COLUMNS}"
     ))
     .bind(id)
     .bind(pipeline_stage)
+    .bind(org_id)
     .fetch_optional(&mut **tx)
     .await
 }
@@ -187,15 +195,17 @@ pub async fn start_story(
 pub async fn update_rank(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     id: Uuid,
+    org_id: Uuid,
     rank: &str,
 ) -> Result<Option<StoryRow>, sqlx::Error> {
     sqlx::query_as::<_, StoryRow>(&format!(
         "UPDATE stories SET rank = $2, updated_at = now()
-         WHERE id = $1 AND deleted_at IS NULL
+         WHERE id = $1 AND org_id = $3 AND deleted_at IS NULL
          RETURNING {STORY_COLUMNS}"
     ))
     .bind(id)
     .bind(rank)
+    .bind(org_id)
     .fetch_optional(&mut **tx)
     .await
 }
@@ -204,12 +214,14 @@ pub async fn update_rank(
 pub async fn soft_delete_story(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     id: Uuid,
+    org_id: Uuid,
 ) -> Result<bool, sqlx::Error> {
     let result = sqlx::query(
         "UPDATE stories SET deleted_at = now()
-         WHERE id = $1 AND deleted_at IS NULL",
+         WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL",
     )
     .bind(id)
+    .bind(org_id)
     .execute(&mut **tx)
     .await?;
     Ok(result.rows_affected() > 0)

@@ -81,7 +81,7 @@ pub async fn create_key(
     set_org_context(&mut tx, org_id).await?;
 
     // Validate the project exists in this org (RLS enforces org isolation).
-    crate::project::repo::get_project(&mut tx, req.project_id)
+    crate::project::repo::get_project(&mut tx, req.project_id, org_id)
         .await?
         .ok_or(ContainerKeyError::ProjectNotFound)?;
 

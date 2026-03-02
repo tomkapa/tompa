@@ -19,15 +19,18 @@ pub struct ProjectRow {
 /// Membership enforcement is delegated to RLS (app.org_id already set by caller).
 pub async fn list_projects(
     tx: &mut sqlx::Transaction<'_, Postgres>,
+    org_id: Uuid,
 ) -> Result<Vec<ProjectRow>, sqlx::Error> {
     sqlx::query_as::<_, ProjectRow>(
         r#"
         SELECT id, org_id, name, description, github_repo_url, created_at, updated_at
         FROM projects
         WHERE deleted_at IS NULL
+          AND org_id = $1
         ORDER BY created_at
         "#,
     )
+    .bind(org_id)
     .fetch_all(&mut **tx)
     .await
 }
@@ -37,6 +40,7 @@ pub async fn list_projects(
 pub async fn get_project(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     id: Uuid,
+    org_id: Uuid,
 ) -> Result<Option<ProjectRow>, sqlx::Error> {
     sqlx::query_as::<_, ProjectRow>(
         r#"
@@ -44,9 +48,11 @@ pub async fn get_project(
         FROM projects
         WHERE id = $1
           AND deleted_at IS NULL
+          AND org_id = $2
         "#,
     )
     .bind(id)
+    .bind(org_id)
     .fetch_optional(&mut **tx)
     .await
 }
@@ -81,6 +87,7 @@ pub async fn create_project(
 pub async fn update_project(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     id: Uuid,
+    org_id: Uuid,
     name: Option<&str>,
     description: Option<&str>,
     github_repo_url: Option<&str>,
@@ -95,6 +102,7 @@ pub async fn update_project(
             updated_at      = now()
         WHERE id = $1
           AND deleted_at IS NULL
+          AND org_id = $5
         RETURNING id, org_id, name, description, github_repo_url, created_at, updated_at
         "#,
     )
@@ -102,6 +110,7 @@ pub async fn update_project(
     .bind(name)
     .bind(description)
     .bind(github_repo_url)
+    .bind(org_id)
     .fetch_optional(&mut **tx)
     .await
 }
@@ -111,6 +120,7 @@ pub async fn update_project(
 pub async fn soft_delete_project(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     id: Uuid,
+    org_id: Uuid,
 ) -> Result<bool, sqlx::Error> {
     let result = sqlx::query(
         r#"
@@ -118,9 +128,11 @@ pub async fn soft_delete_project(
         SET deleted_at = now()
         WHERE id = $1
           AND deleted_at IS NULL
+          AND org_id = $2
         "#,
     )
     .bind(id)
+    .bind(org_id)
     .execute(&mut **tx)
     .await?;
     Ok(result.rows_affected() > 0)

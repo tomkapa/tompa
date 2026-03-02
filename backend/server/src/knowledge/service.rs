@@ -32,7 +32,7 @@ pub async fn list_knowledge(
 ) -> Result<Vec<KnowledgeResponse>, ApiError> {
     let mut tx = state.pool.begin().await?;
     set_org_context(&mut tx, org_id).await?;
-    let rows = repo::list_knowledge(&mut tx, project_id, story_id).await?;
+    let rows = repo::list_knowledge(&mut tx, org_id, project_id, story_id).await?;
     tx.commit().await?;
     Ok(rows.into_iter().map(to_response).collect())
 }
@@ -96,6 +96,7 @@ pub async fn update_knowledge(
     let row = repo::update_knowledge(
         &mut tx,
         id,
+        org_id,
         req.title.as_deref(),
         req.content.as_deref(),
         req.category.as_deref(),
@@ -109,7 +110,7 @@ pub async fn update_knowledge(
 pub async fn delete_knowledge(state: &AppState, org_id: Uuid, id: Uuid) -> Result<(), ApiError> {
     let mut tx = state.pool.begin().await?;
     set_org_context(&mut tx, org_id).await?;
-    let deleted = repo::soft_delete_knowledge(&mut tx, id).await?;
+    let deleted = repo::soft_delete_knowledge(&mut tx, id, org_id).await?;
     tx.commit().await?;
     if !deleted {
         return Err(ApiError::NotFound);

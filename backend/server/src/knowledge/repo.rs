@@ -25,6 +25,7 @@ pub struct KnowledgeRow {
 /// - If both `project_id` and `story_id` are Some, also includes story-level entries.
 pub async fn list_knowledge(
     tx: &mut sqlx::Transaction<'_, Postgres>,
+    org_id: Uuid,
     project_id: Option<Uuid>,
     story_id: Option<Uuid>,
 ) -> Result<Vec<KnowledgeRow>, sqlx::Error> {
@@ -33,6 +34,7 @@ pub async fn list_knowledge(
         SELECT id, org_id, project_id, story_id, category, title, content, created_at, updated_at
         FROM knowledge_entries
         WHERE deleted_at IS NULL
+          AND org_id = $3
           AND (
               (project_id IS NULL AND story_id IS NULL)
               OR ($1::uuid IS NOT NULL AND project_id = $1 AND story_id IS NULL)
@@ -43,6 +45,7 @@ pub async fn list_knowledge(
     )
     .bind(project_id)
     .bind(story_id)
+    .bind(org_id)
     .fetch_all(&mut **tx)
     .await
 }
@@ -52,6 +55,7 @@ pub async fn list_knowledge(
 pub async fn get_knowledge(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     id: Uuid,
+    org_id: Uuid,
 ) -> Result<Option<KnowledgeRow>, sqlx::Error> {
     sqlx::query_as::<_, KnowledgeRow>(
         r#"
@@ -59,9 +63,11 @@ pub async fn get_knowledge(
         FROM knowledge_entries
         WHERE id = $1
           AND deleted_at IS NULL
+          AND org_id = $2
         "#,
     )
     .bind(id)
+    .bind(org_id)
     .fetch_optional(&mut **tx)
     .await
 }
@@ -100,6 +106,7 @@ pub async fn create_knowledge(
 pub async fn update_knowledge(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     id: Uuid,
+    org_id: Uuid,
     title: Option<&str>,
     content: Option<&str>,
     category: Option<&str>,
@@ -114,6 +121,7 @@ pub async fn update_knowledge(
             updated_at = now()
         WHERE id = $1
           AND deleted_at IS NULL
+          AND org_id = $5
         RETURNING id, org_id, project_id, story_id, category, title, content, created_at, updated_at
         "#,
     )
@@ -121,6 +129,7 @@ pub async fn update_knowledge(
     .bind(title)
     .bind(content)
     .bind(category)
+    .bind(org_id)
     .fetch_optional(&mut **tx)
     .await
 }
@@ -130,6 +139,7 @@ pub async fn update_knowledge(
 pub async fn soft_delete_knowledge(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     id: Uuid,
+    org_id: Uuid,
 ) -> Result<bool, sqlx::Error> {
     let result = sqlx::query(
         r#"
@@ -137,9 +147,11 @@ pub async fn soft_delete_knowledge(
         SET deleted_at = now()
         WHERE id = $1
           AND deleted_at IS NULL
+          AND org_id = $2
         "#,
     )
     .bind(id)
+    .bind(org_id)
     .execute(&mut **tx)
     .await?;
     Ok(result.rows_affected() > 0)

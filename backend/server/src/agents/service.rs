@@ -78,7 +78,7 @@ async fn on_question_batch(
     let stage = if task_id.is_some() {
         "task_qa".to_string()
     } else {
-        story_repo::get_story(&mut tx, story_id)
+        story_repo::get_story(&mut tx, story_id, org_id)
             .await?
             .ok_or(ApiError::NotFound)?
             .pipeline_stage
@@ -165,6 +165,7 @@ async fn on_task_decomposition(
     story_repo::update_story(
         &mut tx,
         story_id,
+        org_id,
         None,
         None,
         None,
@@ -196,7 +197,7 @@ async fn on_task_paused(
     let mut tx = state.pool.begin().await?;
     set_org_context(&mut tx, org_id).await?;
 
-    let story_id = task_repo::get_task(&mut tx, task_id)
+    let story_id = task_repo::get_task(&mut tx, task_id, org_id)
         .await?
         .ok_or(ApiError::NotFound)?
         .story_id;
@@ -205,6 +206,7 @@ async fn on_task_paused(
     task_repo::update_task(
         &mut tx,
         task_id,
+        org_id,
         None,
         None,
         None,
@@ -277,7 +279,7 @@ async fn on_task_completed(
     let mut tx = state.pool.begin().await?;
     set_org_context(&mut tx, org_id).await?;
 
-    let story_id = task_repo::get_task(&mut tx, task_id)
+    let story_id = task_repo::get_task(&mut tx, task_id, org_id)
         .await?
         .ok_or(ApiError::NotFound)?
         .story_id;
@@ -288,6 +290,7 @@ async fn on_task_completed(
     task_repo::update_task(
         &mut tx,
         task_id,
+        org_id,
         None,
         None,
         None,
@@ -307,7 +310,7 @@ async fn on_task_completed(
             .all(|t| t.state == "running" || t.state == "done");
 
     if all_reviewed {
-        story_repo::update_story(&mut tx, story_id, None, None, None, None, Some("review")).await?;
+        story_repo::update_story(&mut tx, story_id, org_id, None, None, None, None, Some("review")).await?;
     }
 
     tx.commit().await?;
@@ -339,7 +342,7 @@ async fn on_task_failed(
     let mut tx = state.pool.begin().await?;
     set_org_context(&mut tx, org_id).await?;
 
-    let story_id = task_repo::get_task(&mut tx, task_id)
+    let story_id = task_repo::get_task(&mut tx, task_id, org_id)
         .await?
         .ok_or(ApiError::NotFound)?
         .story_id;
@@ -347,6 +350,7 @@ async fn on_task_failed(
     task_repo::update_task(
         &mut tx,
         task_id,
+        org_id,
         None,
         None,
         None,
@@ -381,7 +385,7 @@ async fn on_status_update(
     let mut tx = state.pool.begin().await?;
     set_org_context(&mut tx, org_id).await?;
 
-    let story_id = task_repo::get_task(&mut tx, task_id)
+    let story_id = task_repo::get_task(&mut tx, task_id, org_id)
         .await?
         .ok_or(ApiError::NotFound)?
         .story_id;
@@ -389,6 +393,7 @@ async fn on_status_update(
     task_repo::update_task(
         &mut tx,
         task_id,
+        org_id,
         None,
         None,
         None,

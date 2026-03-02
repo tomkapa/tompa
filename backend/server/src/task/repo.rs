@@ -52,16 +52,18 @@ pub async fn list_tasks(
     .await
 }
 
-/// Fetch a single task by id (RLS-scoped to current org).
+/// Fetch a single task by id, scoped to org_id.
 pub async fn get_task(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     id: Uuid,
+    org_id: Uuid,
 ) -> Result<Option<TaskRow>, sqlx::Error> {
     sqlx::query_as::<_, TaskRow>(&format!(
         "SELECT {TASK_COLUMNS} FROM tasks
-         WHERE id = $1 AND deleted_at IS NULL"
+         WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL"
     ))
     .bind(id)
+    .bind(org_id)
     .fetch_optional(&mut **tx)
     .await
 }
@@ -102,6 +104,7 @@ pub async fn create_task(
 pub async fn update_task(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     id: Uuid,
+    org_id: Uuid,
     name: Option<&str>,
     description: Option<&str>,
     position: Option<i32>,
@@ -120,7 +123,7 @@ pub async fn update_task(
              claude_session_id = COALESCE($7, claude_session_id),
              ai_status_text    = COALESCE($8, ai_status_text),
              updated_at        = now()
-         WHERE id = $1 AND deleted_at IS NULL
+         WHERE id = $1 AND org_id = $9 AND deleted_at IS NULL
          RETURNING {TASK_COLUMNS}"
     ))
     .bind(id)
@@ -131,6 +134,7 @@ pub async fn update_task(
     .bind(state)
     .bind(claude_session_id)
     .bind(ai_status_text)
+    .bind(org_id)
     .fetch_optional(&mut **tx)
     .await
 }
@@ -139,12 +143,14 @@ pub async fn update_task(
 pub async fn soft_delete_task(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     id: Uuid,
+    org_id: Uuid,
 ) -> Result<bool, sqlx::Error> {
     let result = sqlx::query(
         "UPDATE tasks SET deleted_at = now()
-         WHERE id = $1 AND deleted_at IS NULL",
+         WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL",
     )
     .bind(id)
+    .bind(org_id)
     .execute(&mut **tx)
     .await?;
     Ok(result.rows_affected() > 0)
@@ -155,16 +161,18 @@ pub async fn soft_delete_task(
 pub async fn mark_done(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     id: Uuid,
+    org_id: Uuid,
 ) -> Result<Option<TaskRow>, sqlx::Error> {
     sqlx::query_as::<_, TaskRow>(&format!(
         "UPDATE tasks SET
              state          = 'done',
              ai_status_text = NULL,
              updated_at     = now()
-         WHERE id = $1 AND deleted_at IS NULL
+         WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL
          RETURNING {TASK_COLUMNS}"
     ))
     .bind(id)
+    .bind(org_id)
     .fetch_optional(&mut **tx)
     .await
 }

@@ -25,7 +25,7 @@ pub async fn list_projects(
 ) -> Result<Vec<ProjectResponse>, ApiError> {
     let mut tx = state.pool.begin().await?;
     set_org_context(&mut tx, org_id).await?;
-    let rows = repo::list_projects(&mut tx).await?;
+    let rows = repo::list_projects(&mut tx, org_id).await?;
     tx.commit().await?;
     Ok(rows.into_iter().map(to_response).collect())
 }
@@ -37,7 +37,7 @@ pub async fn get_project(
 ) -> Result<ProjectResponse, ApiError> {
     let mut tx = state.pool.begin().await?;
     set_org_context(&mut tx, org_id).await?;
-    let row = repo::get_project(&mut tx, id)
+    let row = repo::get_project(&mut tx, id, org_id)
         .await?
         .ok_or(ApiError::NotFound)?;
     tx.commit().await?;
@@ -83,6 +83,7 @@ pub async fn update_project(
     let row = repo::update_project(
         &mut tx,
         id,
+        org_id,
         req.name.as_deref(),
         req.description.as_deref(),
         req.github_repo_url.as_deref(),
@@ -96,7 +97,7 @@ pub async fn update_project(
 pub async fn delete_project(state: &AppState, org_id: Uuid, id: Uuid) -> Result<(), ApiError> {
     let mut tx = state.pool.begin().await?;
     set_org_context(&mut tx, org_id).await?;
-    let deleted = repo::soft_delete_project(&mut tx, id).await?;
+    let deleted = repo::soft_delete_project(&mut tx, id, org_id).await?;
     tx.commit().await?;
     if !deleted {
         return Err(ApiError::NotFound);

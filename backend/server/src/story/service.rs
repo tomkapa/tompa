@@ -49,7 +49,7 @@ pub async fn list_stories(
 ) -> Result<Vec<StoryResponse>, ApiError> {
     let mut tx = state.pool.begin().await?;
     set_org_context(&mut tx, org_id).await?;
-    let rows = repo::list_stories(&mut tx, project_id).await?;
+    let rows = repo::list_stories(&mut tx, org_id, project_id).await?;
     // For list, return empty task slices (not needed for list view)
     let stories = rows.into_iter().map(|r| to_response(r, vec![])).collect();
     tx.commit().await?;
@@ -63,7 +63,7 @@ pub async fn get_story(
 ) -> Result<StoryResponse, ApiError> {
     let mut tx = state.pool.begin().await?;
     set_org_context(&mut tx, org_id).await?;
-    let row = repo::get_story(&mut tx, id)
+    let row = repo::get_story(&mut tx, id, org_id)
         .await?
         .ok_or(ApiError::NotFound)?;
     let tasks = repo::get_tasks_for_story(&mut tx, id).await?;
@@ -129,7 +129,7 @@ pub async fn update_story(
     set_org_context(&mut tx, org_id).await?;
 
     // Fetch current story to validate the status transition
-    let current = repo::get_story(&mut tx, id)
+    let current = repo::get_story(&mut tx, id, org_id)
         .await?
         .ok_or(ApiError::NotFound)?;
 
@@ -141,6 +141,7 @@ pub async fn update_story(
     let updated = repo::update_story(
         &mut tx,
         id,
+        org_id,
         trimmed_title,
         req.description.as_deref(),
         req.status.as_deref(),
@@ -158,7 +159,7 @@ pub async fn update_story(
 pub async fn delete_story(state: &AppState, org_id: Uuid, id: Uuid) -> Result<(), ApiError> {
     let mut tx = state.pool.begin().await?;
     set_org_context(&mut tx, org_id).await?;
-    let deleted = repo::soft_delete_story(&mut tx, id).await?;
+    let deleted = repo::soft_delete_story(&mut tx, id, org_id).await?;
     tx.commit().await?;
     if !deleted {
         return Err(ApiError::NotFound);
@@ -182,13 +183,13 @@ pub async fn update_rank(
     set_org_context(&mut tx, org_id).await?;
 
     // Verify the target story exists
-    repo::get_story(&mut tx, id)
+    repo::get_story(&mut tx, id, org_id)
         .await?
         .ok_or(ApiError::NotFound)?;
 
     // Resolve the rank of after_id (lower bound)
     let lo_rank: Option<String> = if let Some(after_id) = req.after_id {
-        let s = repo::get_story(&mut tx, after_id)
+        let s = repo::get_story(&mut tx, after_id, org_id)
             .await?
             .ok_or(ApiError::NotFound)?;
         Some(s.rank)
@@ -198,7 +199,7 @@ pub async fn update_rank(
 
     // Resolve the rank of before_id (upper bound)
     let hi_rank: Option<String> = if let Some(before_id) = req.before_id {
-        let s = repo::get_story(&mut tx, before_id)
+        let s = repo::get_story(&mut tx, before_id, org_id)
             .await?
             .ok_or(ApiError::NotFound)?;
         Some(s.rank)
@@ -209,7 +210,7 @@ pub async fn update_rank(
     let new_rank = rank::generate_key_between(lo_rank.as_deref(), hi_rank.as_deref())
         .map_err(|e| ApiError::BadRequest(e.to_string()))?;
 
-    let updated = repo::update_rank(&mut tx, id, &new_rank)
+    let updated = repo::update_rank(&mut tx, id, org_id, &new_rank)
         .await?
         .ok_or(ApiError::NotFound)?;
     let tasks = repo::get_tasks_for_story(&mut tx, id).await?;
@@ -225,7 +226,7 @@ pub async fn start_story(
     let mut tx = state.pool.begin().await?;
     set_org_context(&mut tx, org_id).await?;
 
-    let current = repo::get_story(&mut tx, id)
+    let current = repo::get_story(&mut tx, id, org_id)
         .await?
         .ok_or(ApiError::NotFound)?;
 
@@ -244,7 +245,7 @@ pub async fn start_story(
         "grooming"
     };
 
-    let updated = repo::start_story(&mut tx, id, stage)
+    let updated = repo::start_story(&mut tx, id, org_id, stage)
         .await?
         .ok_or(ApiError::NotFound)?;
     let tasks = repo::get_tasks_for_story(&mut tx, id).await?;
