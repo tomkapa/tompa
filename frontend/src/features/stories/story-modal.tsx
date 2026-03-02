@@ -116,14 +116,15 @@ function ModalShell({ breadcrumb, onCloseAttempt, children, className }: ModalSh
     >
       <div
         className={cn(
-          'flex w-[min(1152px,92vw)] flex-col overflow-hidden rounded-2xl bg-card shadow-[0_16px_48px_rgba(0,0,0,0.2)]',
-          'h-[min(720px,90vh)]',
+          'flex flex-col overflow-hidden bg-card',
+          'h-full w-full',
+          'md:h-[min(720px,90vh)] md:w-[min(1152px,92vw)] md:rounded-2xl md:shadow-[0_16px_48px_rgba(0,0,0,0.2)]',
           className
         )}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex shrink-0 items-center justify-between border-b border-border px-6 py-4">
+        <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3 md:px-6 md:py-4">
           {breadcrumb}
           <button
             type="button"
@@ -135,7 +136,7 @@ function ModalShell({ breadcrumb, onCloseAttempt, children, className }: ModalSh
           </button>
         </div>
 
-        {/* Two-column content area */}
+        {/* Content area */}
         <div className="flex min-h-0 flex-1 overflow-hidden">
           {children}
         </div>
@@ -149,6 +150,12 @@ function ModalShell({ breadcrumb, onCloseAttempt, children, className }: ModalSh
 const QA_TABS = [
   { id: 'qa', label: 'Q&A Thread' },
   { id: 'decisions', label: 'Decision Trail' },
+]
+
+const MOBILE_TABS = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'qa', label: 'Q&A' },
+  { id: 'decisions', label: 'Decisions' },
 ]
 
 interface RightPanelProps {
@@ -218,31 +225,65 @@ function StoryViewContent({
   const mappedRounds = React.useMemo(() => rounds.map(mapApiRound), [rounds])
   const decisions = React.useMemo(() => roundsToDecisions(rounds), [rounds])
   const currentStage = rounds[rounds.length - 1]?.stage ?? 'grooming'
+  const [mobileTab, setMobileTab] = React.useState('overview')
 
   return (
-    <>
-      {/* Left column — 40% */}
-      <div className="w-[40%] shrink-0 overflow-y-auto border-r border-border p-4">
-        <StoryOverview
-          story={story}
-          tasks={story.tasks}
-          onTaskClick={onTaskClick}
-          className="h-full"
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden w-full">
+      {/* Mobile tab bar */}
+      <div className="md:hidden shrink-0 flex justify-center border-b border-border px-4 py-2">
+        <TabSwitcher tabs={MOBILE_TABS} activeId={mobileTab} onChange={setMobileTab} />
+      </div>
+
+      {/* Desktop: two-column layout */}
+      <div className="hidden md:flex min-h-0 flex-1 overflow-hidden">
+        <div className="w-[40%] shrink-0 overflow-y-auto border-r border-border p-4">
+          <StoryOverview
+            story={story}
+            tasks={story.tasks}
+            onTaskClick={onTaskClick}
+            className="h-full"
+          />
+        </div>
+        <RightPanel
+          rounds={mappedRounds}
+          decisions={decisions}
+          level="story"
+          storyId={story.id}
+          currentStage={currentStage}
+          onAnswer={onAnswer}
+          onRollback={onRollback}
+          onCourseCorrect={onCourseCorrect}
         />
       </div>
 
-      {/* Right column — 60% */}
-      <RightPanel
-        rounds={mappedRounds}
-        decisions={decisions}
-        level="story"
-        storyId={story.id}
-        currentStage={currentStage}
-        onAnswer={onAnswer}
-        onRollback={onRollback}
-        onCourseCorrect={onCourseCorrect}
-      />
-    </>
+      {/* Mobile: single panel based on active tab */}
+      <div className="flex md:hidden min-h-0 flex-1 overflow-hidden">
+        {mobileTab === 'overview' && (
+          <div className="flex-1 overflow-y-auto p-4">
+            <StoryOverview
+              story={story}
+              tasks={story.tasks}
+              onTaskClick={onTaskClick}
+            />
+          </div>
+        )}
+        {mobileTab === 'qa' && (
+          <div className="flex-1 overflow-hidden p-4">
+            <QaThread
+              rounds={mappedRounds}
+              onAnswer={onAnswer}
+              onRollback={onRollback}
+              onCourseCorrect={onCourseCorrect}
+            />
+          </div>
+        )}
+        {mobileTab === 'decisions' && (
+          <div className="flex-1 overflow-y-auto p-4">
+            <DecisionTrail decisions={decisions} level="story" />
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -279,6 +320,7 @@ function TaskViewContent({
   const mappedRounds = React.useMemo(() => rounds.map(mapApiRound), [rounds])
   const decisions = React.useMemo(() => roundsToDecisions(rounds), [rounds])
   const currentStage = rounds[rounds.length - 1]?.stage ?? 'task-qa'
+  const [mobileTab, setMobileTab] = React.useState('overview')
 
   if (!task) {
     return (
@@ -289,30 +331,63 @@ function TaskViewContent({
   }
 
   return (
-    <>
-      {/* Left column — 40% */}
-      <div className="w-[40%] shrink-0 overflow-y-auto border-r border-border p-4">
-        <TaskOverview
-          task={task}
-          onMarkDone={() => markDoneMutation.mutate({ id: taskId })}
-          markDoneLoading={markDoneMutation.isPending}
-          className="h-full"
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden w-full">
+      {/* Mobile tab bar */}
+      <div className="md:hidden shrink-0 flex justify-center border-b border-border px-4 py-2">
+        <TabSwitcher tabs={MOBILE_TABS} activeId={mobileTab} onChange={setMobileTab} />
+      </div>
+
+      {/* Desktop: two-column layout */}
+      <div className="hidden md:flex min-h-0 flex-1 overflow-hidden">
+        <div className="w-[40%] shrink-0 overflow-y-auto border-r border-border p-4">
+          <TaskOverview
+            task={task}
+            onMarkDone={() => markDoneMutation.mutate({ id: taskId })}
+            markDoneLoading={markDoneMutation.isPending}
+            className="h-full"
+          />
+        </div>
+        <RightPanel
+          rounds={mappedRounds}
+          decisions={decisions}
+          level="task"
+          storyId={task.story_id}
+          taskId={taskId}
+          currentStage={currentStage}
+          onAnswer={onAnswer}
+          onRollback={onRollback}
+          onCourseCorrect={onCourseCorrect}
         />
       </div>
 
-      {/* Right column — 60% */}
-      <RightPanel
-        rounds={mappedRounds}
-        decisions={decisions}
-        level="task"
-        storyId={task.story_id}
-        taskId={taskId}
-        currentStage={currentStage}
-        onAnswer={onAnswer}
-        onRollback={onRollback}
-        onCourseCorrect={onCourseCorrect}
-      />
-    </>
+      {/* Mobile: single panel based on active tab */}
+      <div className="flex md:hidden min-h-0 flex-1 overflow-hidden">
+        {mobileTab === 'overview' && (
+          <div className="flex-1 overflow-y-auto p-4">
+            <TaskOverview
+              task={task}
+              onMarkDone={() => markDoneMutation.mutate({ id: taskId })}
+              markDoneLoading={markDoneMutation.isPending}
+            />
+          </div>
+        )}
+        {mobileTab === 'qa' && (
+          <div className="flex-1 overflow-hidden p-4">
+            <QaThread
+              rounds={mappedRounds}
+              onAnswer={onAnswer}
+              onRollback={onRollback}
+              onCourseCorrect={onCourseCorrect}
+            />
+          </div>
+        )}
+        {mobileTab === 'decisions' && (
+          <div className="flex-1 overflow-y-auto p-4">
+            <DecisionTrail decisions={decisions} level="task" />
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 

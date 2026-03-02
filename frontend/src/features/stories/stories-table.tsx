@@ -113,7 +113,7 @@ export function StoriesTable({
         <div className="w-[140px] shrink-0 px-3 text-xs font-medium text-muted-foreground uppercase tracking-wide">
           Status
         </div>
-        <div className="w-[140px] shrink-0 px-3 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+        <div className="hidden sm:block w-[140px] shrink-0 px-3 text-xs font-medium text-muted-foreground uppercase tracking-wide">
           Owner
         </div>
       </div>

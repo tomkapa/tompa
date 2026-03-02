@@ -56,7 +56,7 @@ export function StoryTableRow({ story, onClick, dragHandleProps }: StoryTableRow
       </div>
 
       {/* Owner Column */}
-      <div className="flex h-full w-[140px] shrink-0 items-center px-3">
+      <div className="hidden sm:flex h-full w-[140px] shrink-0 items-center px-3">
         <span className="text-sm text-muted-foreground truncate">{story.ownerName}</span>
       </div>
     </div>

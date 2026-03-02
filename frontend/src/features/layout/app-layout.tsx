@@ -57,9 +57,9 @@ interface AppHeaderProps {
 
 function AppHeader({ projectName, searchValue, onSearchChange, hasNotification }: AppHeaderProps) {
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-background px-6">
+    <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-background px-4 md:px-6">
       {/* Left — project icon + name */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3 md:gap-4">
         <div
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px]"
           style={{
@@ -74,7 +74,16 @@ function AppHeader({ projectName, searchValue, onSearchChange, hasNotification }
 
       {/* Center — global search */}
       <div className="flex items-center">
-        <div className="relative w-[400px]">
+        {/* Mobile: icon-only search button */}
+        <button
+          type="button"
+          aria-label="Search"
+          className="flex md:hidden h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <Search className="h-4 w-4" />
+        </button>
+        {/* Desktop: full search bar */}
+        <div className="relative hidden md:block w-[400px]">
           <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             className="h-9 pl-10 pr-12 py-2 text-sm rounded-full"
@@ -90,7 +99,7 @@ function AppHeader({ projectName, searchValue, onSearchChange, hasNotification }
       </div>
 
       {/* Right — notification bell + user avatar */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 md:gap-3">
         <div className="relative">
           <button
             type="button"
@@ -218,14 +227,15 @@ export function AppLayout() {
       />
 
       {/* Main content */}
-      <main className="flex min-h-0 flex-1 flex-col gap-6 overflow-hidden bg-accent p-8">
+      <main className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden bg-accent p-4 md:gap-6 md:p-8">
         {/* Page header */}
         <div className="flex shrink-0 items-center justify-between">
-          <h1 className="text-2xl font-semibold leading-none text-foreground">Stories</h1>
-          <div className="flex items-center gap-3">
+          <h1 className="text-xl font-semibold leading-none text-foreground md:text-2xl">Stories</h1>
+          <div className="flex items-center gap-2 md:gap-3">
             <Button
               variant="outline"
               leadingIcon={<Filter className="h-4 w-4" />}
+              className="hidden sm:flex"
             >
               Filter
             </Button>
