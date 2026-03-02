@@ -1,6 +1,6 @@
 <p align="center">
   <a href="#">
-    <img src=".github/assets/banner.png" alt="tompa — AI-Integrated Development Pipeline" width="100%">
+    <img src=".github/assets/banner.svg" alt="tompa — AI-Integrated Development Pipeline" width="100%">
   </a>
 </p>
 

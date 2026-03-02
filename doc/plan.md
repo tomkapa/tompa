@@ -2157,7 +2157,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        image: postgres:18
         env: { POSTGRES_DB: test, POSTGRES_USER: test, POSTGRES_PASSWORD: test }
     steps:
       - cargo fmt --check

@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        image: postgres:18
         env:
           POSTGRES_DB: test
           POSTGRES_USER: test
@@ -120,7 +120,7 @@ jobs:
 
       - name: Generate OpenAPI spec
         working-directory: backend
-        run: cargo run --bin server -- --print-openapi > ../openapi.json
+        run: cargo run --bin generate-openapi > ../openapi.json
         env:
           SQLX_OFFLINE: "true"
 
