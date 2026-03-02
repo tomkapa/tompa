@@ -34,7 +34,7 @@ import { useToastStore } from '@/stores/toast-store'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-export function slugify(name: string): string {
+function slugify(name: string): string {
   return name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
@@ -396,7 +396,7 @@ export function AppLayout() {
         owners={user ? [{ id: user.user_id, name: user.display_name }] : []}
         isGenerating={createStoryMutation.isPending}
         onRequestExpansion={handleCreateStory}
-        onApprove={(data, _editedDescription) => handleCreateStory(data)}
+        onApprove={(data) => handleCreateStory(data)}
       />
     </div>
   )
