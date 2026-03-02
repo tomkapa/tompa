@@ -2,11 +2,7 @@ use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::{
-    auth::{middleware::set_org_context, types::AuthError},
-    errors::ApiError,
-    state::AppState,
-};
+use crate::{auth::types::AuthError, db::OrgTx, errors::ApiError};
 
 use super::{
     repo,
@@ -43,21 +39,13 @@ fn to_list_item(row: repo::KeyRow) -> KeyListItem {
     }
 }
 
-pub async fn list_keys(
-    state: &AppState,
-    org_id: Uuid,
-    project_id: Uuid,
-) -> Result<Vec<KeyListItem>, ApiError> {
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
-    let rows = repo::list_keys(&mut tx, project_id).await?;
-    tx.commit().await?;
+pub async fn list_keys(tx: &mut OrgTx, project_id: Uuid) -> Result<Vec<KeyListItem>, ApiError> {
+    let rows = repo::list_keys(tx, project_id).await?;
     Ok(rows.into_iter().map(to_list_item).collect())
 }
 
 pub async fn create_key(
-    state: &AppState,
-    org_id: Uuid,
+    tx: &mut OrgTx,
     req: CreateKeyRequest,
 ) -> Result<CreateKeyResponse, ApiError> {
     let label = req.label.trim().to_string();
@@ -77,16 +65,15 @@ pub async fn create_key(
         .map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?
         .map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?;
 
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
+    let org_id = tx.auth.org_id;
 
     // Validate the project exists in this org (RLS enforces org isolation).
-    crate::project::repo::get_project(&mut tx, req.project_id, org_id)
+    crate::project::repo::get_project(tx, req.project_id, org_id)
         .await?
         .ok_or(ContainerKeyError::ProjectNotFound)?;
 
     let row = repo::insert_key(
-        &mut tx,
+        tx,
         org_id,
         req.project_id,
         &hash,
@@ -94,7 +81,6 @@ pub async fn create_key(
         &req.container_mode,
     )
     .await?;
-    tx.commit().await?;
 
     Ok(CreateKeyResponse {
         id: row.id,
@@ -105,11 +91,8 @@ pub async fn create_key(
     })
 }
 
-pub async fn revoke_key(state: &AppState, org_id: Uuid, id: Uuid) -> Result<(), ApiError> {
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
-    let revoked = repo::revoke_key(&mut tx, id).await?;
-    tx.commit().await?;
+pub async fn revoke_key(tx: &mut OrgTx, id: Uuid) -> Result<(), ApiError> {
+    let revoked = repo::revoke_key(tx, id).await?;
     if !revoked {
         return Err(ApiError::NotFound);
     }

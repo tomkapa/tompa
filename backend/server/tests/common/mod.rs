@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 
-use testcontainers::runners::SyncRunner;
 use testcontainers::ImageExt;
+use testcontainers::runners::SyncRunner;
 use testcontainers_modules::postgres::Postgres;
 
 /// Container handle kept alive for the test binary's lifetime.
@@ -39,16 +39,16 @@ fn init_test_env() {
 
 #[ctor::dtor]
 fn cleanup_test_env() {
-    if let Ok(mut guard) = PG_CONTAINER.lock() {
-        if let Some(container) = guard.take() {
-            let id = container.id().to_string();
-            // Prevent Container's Drop from running — it panics in dtor
-            // because the async runtime is already torn down.
-            std::mem::forget(container);
-            // Use docker CLI directly for reliable cleanup.
-            let _ = std::process::Command::new("docker")
-                .args(["rm", "-f", &id])
-                .output();
-        }
+    if let Ok(mut guard) = PG_CONTAINER.lock()
+        && let Some(container) = guard.take()
+    {
+        let id = container.id().to_string();
+        // Prevent Container's Drop from running — it panics in dtor
+        // because the async runtime is already torn down.
+        std::mem::forget(container);
+        // Use docker CLI directly for reliable cleanup.
+        let _ = std::process::Command::new("docker")
+            .args(["rm", "-f", &id])
+            .output();
     }
 }

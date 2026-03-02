@@ -1,7 +1,11 @@
-// Placeholder — full auth implementation in T20
+import { useMe } from '@/api/generated/auth/auth'
+import type { MeResponse } from '@/api/generated/tompaAPI.schemas'
+
 export function useAuth() {
-  return {
-    isAuthenticated: false,
-    user: null,
-  }
+  const { data, isLoading } = useMe({ fetch: { credentials: 'include' } })
+
+  const isAuthenticated = data?.status === 200
+  const user: MeResponse | null = isAuthenticated ? data.data : null
+
+  return { isAuthenticated, user, isLoading }
 }

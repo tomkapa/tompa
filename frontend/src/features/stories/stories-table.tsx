@@ -52,11 +52,32 @@ function SortableRow({ story, onStoryClick }: SortableRowProps) {
   )
 }
 
+function SkeletonRow() {
+  return (
+    <div className="flex items-center h-12 border-b border-border last:border-b-0">
+      <div className="w-10 shrink-0 flex items-center justify-center">
+        <div className="h-4 w-4 rounded bg-muted animate-pulse" />
+      </div>
+      <div className="flex-1 px-3">
+        <div className="h-4 w-3/5 rounded bg-muted animate-pulse" />
+      </div>
+      <div className="w-[140px] shrink-0 px-3">
+        <div className="h-5 w-16 rounded-full bg-muted animate-pulse" />
+      </div>
+      <div className="hidden sm:block w-[140px] shrink-0 px-3">
+        <div className="h-4 w-20 rounded bg-muted animate-pulse" />
+      </div>
+    </div>
+  )
+}
+
 export interface StoriesTableProps {
   stories: Story[]
   onStoryClick: (storyId: string) => void
   onNewStory: () => void
   onReorder: (storyId: string, beforeId?: string, afterId?: string) => void
+  isLoading?: boolean
+  searchQuery?: string
   className?: string
 }
 
@@ -65,6 +86,8 @@ export function StoriesTable({
   onStoryClick,
   onNewStory,
   onReorder,
+  isLoading,
+  searchQuery,
   className,
 }: StoriesTableProps) {
   const sensors = useSensors(
@@ -118,29 +141,43 @@ export function StoriesTable({
         </div>
       </div>
 
-      {/* Rows */}
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
-      >
-        <SortableContext
-          items={stories.map((s) => s.id)}
-          strategy={verticalListSortingStrategy}
-        >
-          {stories.map((story) => (
-            <SortableRow
-              key={story.id}
-              story={story}
-              onStoryClick={() => onStoryClick(story.id)}
-            />
-          ))}
-        </SortableContext>
-      </DndContext>
+      {/* Loading skeleton */}
+      {isLoading && stories.length === 0 && (
+        <>
+          <SkeletonRow />
+          <SkeletonRow />
+          <SkeletonRow />
+        </>
+      )}
 
-      {stories.length === 0 && (
+      {/* Rows */}
+      {!isLoading && (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext
+            items={stories.map((s) => s.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            {stories.map((story) => (
+              <SortableRow
+                key={story.id}
+                story={story}
+                onStoryClick={() => onStoryClick(story.id)}
+              />
+            ))}
+          </SortableContext>
+        </DndContext>
+      )}
+
+      {/* Empty states */}
+      {!isLoading && stories.length === 0 && (
         <div className="flex items-center justify-center h-24 text-sm text-muted-foreground">
-          No stories yet. Click New to add one.
+          {searchQuery
+            ? `No stories matching "${searchQuery}"`
+            : 'No stories yet. Click New to add one.'}
         </div>
       )}
     </div>

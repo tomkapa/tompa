@@ -1,16 +1,12 @@
 use axum::{
     Json, Router,
-    extract::{Extension, Path, Query, State},
+    extract::{Path, Query},
     http::StatusCode,
     routing::{get, patch},
 };
 use uuid::Uuid;
 
-use crate::{
-    auth::{middleware::require_auth, types::AuthContext},
-    errors::ApiError,
-    state::AppState,
-};
+use crate::{auth::middleware::require_auth, db::OrgTx, errors::ApiError, state::AppState};
 
 use super::{
     service,
@@ -48,12 +44,11 @@ pub fn router(state: AppState) -> Router<AppState> {
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn list_knowledge(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Query(params): Query<ListKnowledgeParams>,
 ) -> Result<Json<Vec<KnowledgeResponse>>, ApiError> {
-    let entries =
-        service::list_knowledge(&state, auth.org_id, params.project_id, params.story_id).await?;
+    let entries = service::list_knowledge(&mut tx, params.project_id, params.story_id).await?;
+    tx.commit().await?;
     Ok(Json(entries))
 }
 
@@ -71,11 +66,11 @@ pub(crate) async fn list_knowledge(
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn create_knowledge(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Json(req): Json<CreateKnowledgeRequest>,
 ) -> Result<(StatusCode, Json<KnowledgeResponse>), ApiError> {
-    let entry = service::create_knowledge(&state, auth.org_id, req).await?;
+    let entry = service::create_knowledge(&mut tx, req).await?;
+    tx.commit().await?;
     Ok((StatusCode::CREATED, Json(entry)))
 }
 
@@ -97,12 +92,12 @@ pub(crate) async fn create_knowledge(
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn update_knowledge(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateKnowledgeRequest>,
 ) -> Result<Json<KnowledgeResponse>, ApiError> {
-    let entry = service::update_knowledge(&state, auth.org_id, id, req).await?;
+    let entry = service::update_knowledge(&mut tx, id, req).await?;
+    tx.commit().await?;
     Ok(Json(entry))
 }
 
@@ -122,10 +117,10 @@ pub(crate) async fn update_knowledge(
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn delete_knowledge(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, ApiError> {
-    service::delete_knowledge(&state, auth.org_id, id).await?;
+    service::delete_knowledge(&mut tx, id).await?;
+    tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
 }

@@ -1,16 +1,12 @@
 use axum::{
     Json, Router,
-    extract::{Extension, Path, Query, State},
+    extract::{Path, Query},
     http::StatusCode,
     routing::get,
 };
 use uuid::Uuid;
 
-use crate::{
-    auth::{middleware::require_auth, types::AuthContext},
-    errors::ApiError,
-    state::AppState,
-};
+use crate::{auth::middleware::require_auth, db::OrgTx, errors::ApiError, state::AppState};
 
 use super::{
     service,
@@ -45,16 +41,16 @@ pub fn router(state: AppState) -> Router<AppState> {
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn list_projects(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Query(params): Query<ListProjectsParams>,
 ) -> Result<Json<Vec<ProjectResponse>>, ApiError> {
     if let Some(org_id) = params.org_id
-        && org_id != auth.org_id
+        && org_id != tx.auth.org_id
     {
         return Err(ApiError::Forbidden);
     }
-    let projects = service::list_projects(&state, auth.org_id).await?;
+    let projects = service::list_projects(&mut tx).await?;
+    tx.commit().await?;
     Ok(Json(projects))
 }
 
@@ -72,11 +68,11 @@ pub(crate) async fn list_projects(
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn create_project(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Json(req): Json<CreateProjectRequest>,
 ) -> Result<(StatusCode, Json<ProjectResponse>), ApiError> {
-    let project = service::create_project(&state, auth.org_id, req).await?;
+    let project = service::create_project(&mut tx, req).await?;
+    tx.commit().await?;
     Ok((StatusCode::CREATED, Json(project)))
 }
 
@@ -96,11 +92,11 @@ pub(crate) async fn create_project(
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn get_project(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ProjectResponse>, ApiError> {
-    let project = service::get_project(&state, auth.org_id, id).await?;
+    let project = service::get_project(&mut tx, id).await?;
+    tx.commit().await?;
     Ok(Json(project))
 }
 
@@ -122,12 +118,12 @@ pub(crate) async fn get_project(
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn update_project(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateProjectRequest>,
 ) -> Result<Json<ProjectResponse>, ApiError> {
-    let project = service::update_project(&state, auth.org_id, id, req).await?;
+    let project = service::update_project(&mut tx, id, req).await?;
+    tx.commit().await?;
     Ok(Json(project))
 }
 
@@ -147,10 +143,10 @@ pub(crate) async fn update_project(
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn delete_project(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, ApiError> {
-    service::delete_project(&state, auth.org_id, id).await?;
+    service::delete_project(&mut tx, id).await?;
+    tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
 }

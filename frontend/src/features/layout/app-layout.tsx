@@ -9,6 +9,9 @@ import { Input } from '@/components/ui/input'
 import { AttentionDot } from '@/components/ui/attention-dot'
 import { StoriesTable } from '@/features/stories/stories-table'
 import { StoryModal } from '@/features/stories/story-modal'
+import { ProjectSelector } from '@/features/projects/project-selector'
+import { CreateProjectModal } from '@/features/projects/create-project-modal'
+import type { CreateProjectFormData } from '@/features/projects/create-project-modal'
 import type { Story } from '@/features/stories/stories-table'
 import {
   useListStories,
@@ -16,9 +19,15 @@ import {
   useUpdateRank,
   getListStoriesQueryKey,
 } from '@/api/generated/stories/stories'
+import {
+  useListProjects,
+  useCreateProject,
+  getListProjectsQueryKey,
+} from '@/api/generated/projects/projects'
 import type { StoryResponse } from '@/api/generated/tompaAPI.schemas'
 import { useSSE } from '@/hooks/use-sse'
 import { useSSEStore } from '@/stores/sse-store'
+import { useToastStore } from '@/stores/toast-store'
 
 // ── Data mapping ──────────────────────────────────────────────────────────────
 
@@ -49,27 +58,31 @@ function mapStory(s: StoryResponse): Story {
 // ── App Header ─────────────────────────────────────────────────────────────────
 
 interface AppHeaderProps {
-  projectName: string
   searchValue: string
   onSearchChange: (value: string) => void
   hasNotification: boolean
+  projectSelector: React.ReactNode
 }
 
-function AppHeader({ projectName, searchValue, onSearchChange, hasNotification }: AppHeaderProps) {
+function AppHeader({ searchValue, onSearchChange, hasNotification, projectSelector }: AppHeaderProps) {
   return (
     <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-background px-4 md:px-6">
-      {/* Left — project icon + name */}
+      {/* Left — brand + divider + project selector */}
       <div className="flex items-center gap-3 md:gap-4">
-        <div
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px]"
-          style={{
-            background: 'linear-gradient(135deg, #5749F4 0%, #8B5CF6 100%)',
-          }}
-          aria-hidden
-        />
-        <span className="text-[18px] font-semibold leading-none text-foreground">
-          {projectName}
-        </span>
+        <div className="flex items-center gap-2">
+          <div
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px]"
+            style={{
+              background: 'linear-gradient(135deg, #5749F4 0%, #8B5CF6 100%)',
+            }}
+            aria-hidden
+          />
+          <span className="hidden text-base font-semibold leading-none text-foreground md:inline">
+            Tompa
+          </span>
+        </div>
+        <div className="hidden h-6 w-px bg-border md:block" />
+        {projectSelector}
       </div>
 
       {/* Center — global search */}
@@ -87,7 +100,7 @@ function AppHeader({ projectName, searchValue, onSearchChange, hasNotification }
           <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             className="h-9 pl-10 pr-12 py-2 text-sm rounded-full"
-            placeholder="Search stories, tasks, Q&A, decisions…"
+            placeholder="Search stories, tasks, Q&A, decisions..."
             value={searchValue}
             onChange={(e) => onSearchChange(e.target.value)}
             aria-label="Search"
@@ -123,17 +136,13 @@ function AppHeader({ projectName, searchValue, onSearchChange, hasNotification }
 // ── App Layout ────────────────────────────────────────────────────────────────
 
 /**
- * U30 — Main Application Layout.
+ * U30 — Main Application Layout (v2).
  *
  * Top-level layout for a project page. Renders:
- *   - Application header (project name, global search, user menu)
+ *   - Application header (brand, project selector, global search, user menu)
  *   - Stories table as main content
  *   - Story/Task detail modal as a fixed overlay (URL-driven via TanStack Router)
- *
- * Three visual states:
- *   1. Default   — table only
- *   2. Modal     — table + story/task modal overlay
- *   3. Notification — table + header notification dot
+ *   - Create Project modal
  */
 export function AppLayout() {
   const allParams = useParams({ strict: false }) as Record<string, string | undefined>
@@ -144,18 +153,42 @@ export function AppLayout() {
   const queryClient = useQueryClient()
 
   const [searchValue, setSearchValue] = React.useState('')
+  const [createProjectOpen, setCreateProjectOpen] = React.useState(false)
 
   // ── SSE connection ─────────────────────────────────────────────────────────
   useSSE(projectId)
   const hasNotification = useSSEStore((s) => s.hasNotification)
 
-  // ── Fetch stories ──────────────────────────────────────────────────────────
-  const { data: storiesResp } = useListStories(
-    { project_id: projectId },
-    { query: { enabled: !!projectId } },
+  // ── Fetch projects ────────────────────────────────────────────────────────
+  const { data: projectsResp } = useListProjects(
+    undefined,
+    { fetch: { credentials: 'include' } },
   )
-  const apiStories = storiesResp?.status === 200 ? storiesResp.data : []
-  const stories = React.useMemo(() => apiStories.map(mapStory), [apiStories])
+  const projects = React.useMemo(
+    () => (projectsResp?.status === 200 ? projectsResp.data : []),
+    [projectsResp],
+  )
+
+  // Redirect to first project if current is "default" and projects are loaded
+  React.useEffect(() => {
+    if (projectId === 'default' && projects.length > 0) {
+      void navigate({
+        to: '/projects/$projectId',
+        params: { projectId: projects[0].id },
+        replace: true,
+      })
+    }
+  }, [projectId, projects, navigate])
+
+  // ── Fetch stories ──────────────────────────────────────────────────────────
+  const { data: storiesResp, isLoading: storiesLoading } = useListStories(
+    { project_id: projectId },
+    { query: { enabled: !!projectId && projectId !== 'default' } },
+  )
+  const stories = React.useMemo(() => {
+    const apiStories = storiesResp?.status === 200 ? storiesResp.data : []
+    return apiStories.map(mapStory)
+  }, [storiesResp])
 
   // ── Filter by search ───────────────────────────────────────────────────────
   const filteredStories = React.useMemo(() => {
@@ -164,13 +197,37 @@ export function AppLayout() {
     return stories.filter((s) => s.title.toLowerCase().includes(q))
   }, [stories, searchValue])
 
-  // ── Mutations ──────────────────────────────────────────────────────────────
+  // ── Project mutations ─────────────────────────────────────────────────────
+  const createProjectMutation = useCreateProject({
+    mutation: {
+      onSuccess: (resp) => {
+        void queryClient.invalidateQueries({
+          queryKey: getListProjectsQueryKey(),
+        })
+        setCreateProjectOpen(false)
+        if (resp.status === 201) {
+          void navigate({
+            to: '/projects/$projectId',
+            params: { projectId: resp.data.id },
+          })
+        }
+      },
+      onError: () => {
+        useToastStore.getState().addToast({ variant: 'error', title: 'Failed to create project' })
+      },
+    },
+  })
+
+  // ── Story mutations ───────────────────────────────────────────────────────
   const createStoryMutation = useCreateStory({
     mutation: {
       onSuccess: () => {
         void queryClient.invalidateQueries({
           queryKey: getListStoriesQueryKey({ project_id: projectId }),
         })
+      },
+      onError: () => {
+        useToastStore.getState().addToast({ variant: 'error', title: 'Failed to create story' })
       },
     },
   })
@@ -182,10 +239,30 @@ export function AppLayout() {
           queryKey: getListStoriesQueryKey({ project_id: projectId }),
         })
       },
+      onError: () => {
+        useToastStore.getState().addToast({ variant: 'error', title: 'Failed to reorder story' })
+      },
     },
   })
 
   // ── Callbacks ──────────────────────────────────────────────────────────────
+  function handleProjectSelect(selectedProjectId: string) {
+    void navigate({
+      to: '/projects/$projectId',
+      params: { projectId: selectedProjectId },
+    })
+  }
+
+  function handleCreateProject(data: CreateProjectFormData) {
+    createProjectMutation.mutate({
+      data: {
+        name: data.name,
+        description: data.description || undefined,
+        github_repo_url: data.githubRepoUrl || undefined,
+      },
+    })
+  }
+
   function handleStoryClick(clickedStoryId: string) {
     void navigate({
       to: '/projects/$projectId/stories/$storyId',
@@ -220,10 +297,17 @@ export function AppLayout() {
   return (
     <div className={cn('flex h-screen flex-col overflow-hidden bg-background')}>
       <AppHeader
-        projectName={projectId || 'Tompa'}
         searchValue={searchValue}
         onSearchChange={setSearchValue}
         hasNotification={hasNotification}
+        projectSelector={
+          <ProjectSelector
+            projects={projects}
+            activeProjectId={projectId}
+            onSelect={handleProjectSelect}
+            onCreateNew={() => setCreateProjectOpen(true)}
+          />
+        }
       />
 
       {/* Main content */}
@@ -255,12 +339,22 @@ export function AppLayout() {
           onStoryClick={handleStoryClick}
           onNewStory={handleNewStory}
           onReorder={handleReorder}
+          isLoading={storiesLoading}
+          searchQuery={searchValue}
           className="min-h-0 flex-1"
         />
       </main>
 
       {/* Story / Task Detail Modal overlay */}
       {isModalOpen && <StoryModal />}
+
+      {/* Create Project Modal */}
+      <CreateProjectModal
+        open={createProjectOpen}
+        onOpenChange={setCreateProjectOpen}
+        onSubmit={handleCreateProject}
+        isLoading={createProjectMutation.isPending}
+      />
     </div>
   )
 }

@@ -6,9 +6,9 @@ use shared::{
 };
 
 use crate::{
-    auth::middleware::set_org_context,
+    auth::types::AuthContext,
     container_keys::types::ContainerKeyInfo,
-    db::new_id,
+    db::{OrgTx, new_id},
     errors::ApiError,
     qa::{
         repo as qa_repo,
@@ -60,6 +60,15 @@ pub async fn handle_message(state: &AppState, key_info: &ContainerKeyInfo, msg: 
     }
 }
 
+/// Build an `AuthContext` for container-originated requests.
+fn container_auth(key_info: &ContainerKeyInfo) -> AuthContext {
+    AuthContext {
+        user_id: Uuid::nil(),
+        org_id: key_info.org_id,
+        role: "container".into(),
+    }
+}
+
 // ── Incoming handlers (private) ───────────────────────────────────────────────
 
 async fn on_question_batch(
@@ -70,8 +79,7 @@ async fn on_question_batch(
     round: QaRoundContent,
 ) -> Result<(), ApiError> {
     let org_id = key_info.org_id;
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
+    let mut tx = OrgTx::begin(&state.pool, container_auth(key_info)).await?;
 
     // Determine stage from context: task-scoped rounds are always "task_qa";
     // story-level rounds inherit the story's current pipeline_stage.
@@ -127,8 +135,7 @@ async fn on_task_decomposition(
     proposed_tasks: Vec<shared::types::ProposedTask>,
 ) -> Result<(), ApiError> {
     let org_id = key_info.org_id;
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
+    let mut tx = OrgTx::begin(&state.pool, container_auth(key_info)).await?;
 
     // Insert tasks in proposal order and keep the assigned IDs for dependency wiring.
     let mut task_ids: Vec<Uuid> = Vec::with_capacity(proposed_tasks.len());
@@ -194,8 +201,7 @@ async fn on_task_paused(
     question: PauseQuestion,
 ) -> Result<(), ApiError> {
     let org_id = key_info.org_id;
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
+    let mut tx = OrgTx::begin(&state.pool, container_auth(key_info)).await?;
 
     let story_id = task_repo::get_task(&mut tx, task_id, org_id)
         .await?
@@ -276,8 +282,7 @@ async fn on_task_completed(
     commit_sha: &str,
 ) -> Result<(), ApiError> {
     let org_id = key_info.org_id;
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
+    let mut tx = OrgTx::begin(&state.pool, container_auth(key_info)).await?;
 
     let story_id = task_repo::get_task(&mut tx, task_id, org_id)
         .await?
@@ -310,7 +315,17 @@ async fn on_task_completed(
             .all(|t| t.state == "running" || t.state == "done");
 
     if all_reviewed {
-        story_repo::update_story(&mut tx, story_id, org_id, None, None, None, None, Some("review")).await?;
+        story_repo::update_story(
+            &mut tx,
+            story_id,
+            org_id,
+            None,
+            None,
+            None,
+            None,
+            Some("review"),
+        )
+        .await?;
     }
 
     tx.commit().await?;
@@ -339,8 +354,7 @@ async fn on_task_failed(
     error: &str,
 ) -> Result<(), ApiError> {
     let org_id = key_info.org_id;
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
+    let mut tx = OrgTx::begin(&state.pool, container_auth(key_info)).await?;
 
     let story_id = task_repo::get_task(&mut tx, task_id, org_id)
         .await?
@@ -382,8 +396,7 @@ async fn on_status_update(
     status_text: &str,
 ) -> Result<(), ApiError> {
     let org_id = key_info.org_id;
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
+    let mut tx = OrgTx::begin(&state.pool, container_auth(key_info)).await?;
 
     let story_id = task_repo::get_task(&mut tx, task_id, org_id)
         .await?

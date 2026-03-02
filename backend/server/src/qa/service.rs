@@ -1,7 +1,6 @@
-use chrono::Utc;
 use uuid::Uuid;
 
-use crate::{auth::middleware::set_org_context, errors::ApiError, state::AppState};
+use crate::{db::OrgTx, errors::ApiError};
 
 use super::{
     repo,
@@ -33,41 +32,35 @@ fn to_response(row: repo::QaRoundRow) -> Result<QaRoundResponse, ApiError> {
 // ── Public service functions ──────────────────────────────────────────────────
 
 pub async fn list_rounds(
-    state: &AppState,
-    org_id: Uuid,
+    tx: &mut OrgTx,
     params: ListQaRoundsParams,
 ) -> Result<Vec<QaRoundResponse>, ApiError> {
     if params.story_id.is_none() && params.task_id.is_none() {
         return Err(QaError::MissingFilter.into());
     }
 
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
-
+    let org_id = tx.auth.org_id;
     let rows = repo::list_rounds(
-        &mut tx,
+        tx,
         org_id,
         params.story_id,
         params.task_id,
         params.stage.as_deref(),
     )
     .await?;
-    tx.commit().await?;
 
     rows.into_iter().map(to_response).collect()
 }
 
 pub async fn submit_answer(
-    state: &AppState,
-    org_id: Uuid,
+    tx: &mut OrgTx,
     round_id: Uuid,
-    user_id: Uuid,
     req: SubmitAnswerRequest,
 ) -> Result<QaRoundResponse, ApiError> {
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
+    let org_id = tx.auth.org_id;
+    let user_id = tx.auth.user_id;
 
-    let row = repo::get_round(&mut tx, round_id, org_id)
+    let row = repo::get_round(tx, round_id, org_id)
         .await?
         .ok_or(QaError::NotFound)?;
 
@@ -91,28 +84,22 @@ pub async fn submit_answer(
     question.selected_answer_index = req.selected_answer_index;
     question.selected_answer_text = Some(req.answer_text);
     question.answered_by = Some(user_id);
-    question.answered_at = Some(Utc::now());
+    question.answered_at = Some(chrono::Utc::now());
 
     let new_content = serde_json::to_value(&content)
         .map_err(|e| ApiError::Internal(anyhow::anyhow!("Failed to serialize QA content: {e}")))?;
 
-    let updated = repo::update_round_content(&mut tx, round_id, org_id, &new_content)
+    let updated = repo::update_round_content(tx, round_id, org_id, &new_content)
         .await?
         .ok_or(QaError::NotFound)?;
-    tx.commit().await?;
 
     to_response(updated)
 }
 
-pub async fn rollback(
-    state: &AppState,
-    org_id: Uuid,
-    round_id: Uuid,
-) -> Result<QaRoundResponse, ApiError> {
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
+pub async fn rollback(tx: &mut OrgTx, round_id: Uuid) -> Result<QaRoundResponse, ApiError> {
+    let org_id = tx.auth.org_id;
 
-    let row = repo::get_round(&mut tx, round_id, org_id)
+    let row = repo::get_round(tx, round_id, org_id)
         .await?
         .ok_or(QaError::NotFound)?;
 
@@ -121,14 +108,8 @@ pub async fn rollback(
     }
 
     // Supersede all rounds with a higher round_number in the same scope.
-    repo::supersede_rounds_after(
-        &mut tx,
-        row.story_id,
-        row.task_id,
-        &row.stage,
-        row.round_number,
-    )
-    .await?;
+    repo::supersede_rounds_after(tx, row.story_id, row.task_id, &row.stage, row.round_number)
+        .await?;
 
     // Clear all answers in the target round so it can be re-answered.
     let mut content: QaContent = serde_json::from_value(row.content)
@@ -144,17 +125,15 @@ pub async fn rollback(
     let new_content = serde_json::to_value(&content)
         .map_err(|e| ApiError::Internal(anyhow::anyhow!("Failed to serialize QA content: {e}")))?;
 
-    let updated = repo::update_round_content(&mut tx, round_id, org_id, &new_content)
+    let updated = repo::update_round_content(tx, round_id, org_id, &new_content)
         .await?
         .ok_or(QaError::NotFound)?;
-    tx.commit().await?;
 
     to_response(updated)
 }
 
 pub async fn course_correct(
-    state: &AppState,
-    org_id: Uuid,
+    tx: &mut OrgTx,
     req: CourseCorrectionRequest,
 ) -> Result<QaRoundResponse, ApiError> {
     if !VALID_STAGES.contains(&req.stage.as_str()) {
@@ -165,10 +144,9 @@ pub async fn course_correct(
         )));
     }
 
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
+    let org_id = tx.auth.org_id;
 
-    let max_round = repo::get_max_round_number(&mut tx, req.story_id, req.task_id, &req.stage)
+    let max_round = repo::get_max_round_number(tx, req.story_id, req.task_id, &req.stage)
         .await?
         .unwrap_or(0);
     let next_round = max_round + 1;
@@ -181,7 +159,7 @@ pub async fn course_correct(
         .map_err(|e| ApiError::Internal(anyhow::anyhow!("Failed to serialize QA content: {e}")))?;
 
     let row = repo::create_round(
-        &mut tx,
+        tx,
         org_id,
         req.story_id,
         req.task_id,
@@ -190,7 +168,6 @@ pub async fn course_correct(
         &content_value,
     )
     .await?;
-    tx.commit().await?;
 
     to_response(row)
 }

@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { X } from 'lucide-react'
+import { X, Loader2 } from 'lucide-react'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
@@ -26,6 +26,7 @@ import type {
   QaQuestion as ApiQaQuestion,
   StoryResponse,
 } from '@/api/generated/tompaAPI.schemas'
+import { useToastStore } from '@/stores/toast-store'
 
 // ── Data mapping ─────────────────────────────────────────────────────────────
 
@@ -314,6 +315,9 @@ function TaskViewContent({
       onSuccess: () => {
         void queryClient.invalidateQueries({ queryKey: getGetTaskQueryKey(taskId) })
       },
+      onError: () => {
+        useToastStore.getState().addToast({ variant: 'error', title: 'Failed to mark task as done' })
+      },
     },
   })
 
@@ -324,7 +328,8 @@ function TaskViewContent({
 
   if (!task) {
     return (
-      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin" />
         Loading task…
       </div>
     )
@@ -438,6 +443,9 @@ export function StoryModal() {
           queryKey: getListRoundsQueryKey(roundsParams),
         })
       },
+      onError: () => {
+        useToastStore.getState().addToast({ variant: 'error', title: 'Failed to submit answer' })
+      },
     },
   })
 
@@ -448,6 +456,9 @@ export function StoryModal() {
           queryKey: getListRoundsQueryKey(roundsParams),
         })
       },
+      onError: () => {
+        useToastStore.getState().addToast({ variant: 'error', title: 'Failed to submit course correction' })
+      },
     },
   })
 
@@ -457,6 +468,9 @@ export function StoryModal() {
         void queryClient.invalidateQueries({
           queryKey: getListRoundsQueryKey(roundsParams),
         })
+      },
+      onError: () => {
+        useToastStore.getState().addToast({ variant: 'error', title: 'Failed to rollback' })
       },
     },
   })
@@ -573,7 +587,8 @@ export function StoryModal() {
             onTaskClick={handleTaskClick}
           />
         ) : (
-          <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
             Loading story…
           </div>
         )}

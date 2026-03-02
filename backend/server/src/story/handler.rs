@@ -1,16 +1,12 @@
 use axum::{
     Json, Router,
-    extract::{Extension, Path, Query, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, patch, post},
 };
 use uuid::Uuid;
 
-use crate::{
-    auth::{middleware::require_auth, types::AuthContext},
-    errors::ApiError,
-    state::AppState,
-};
+use crate::{auth::middleware::require_auth, db::OrgTx, errors::ApiError, state::AppState};
 
 use super::{
     service,
@@ -46,11 +42,11 @@ pub fn router(state: AppState) -> Router<AppState> {
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn list_stories(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Query(params): Query<ListStoriesParams>,
 ) -> Result<Json<Vec<StoryResponse>>, ApiError> {
-    let stories = service::list_stories(&state, auth.org_id, params.project_id).await?;
+    let stories = service::list_stories(&mut tx, params.project_id).await?;
+    tx.commit().await?;
     Ok(Json(stories))
 }
 
@@ -68,11 +64,11 @@ pub(crate) async fn list_stories(
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn create_story(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Json(req): Json<CreateStoryRequest>,
 ) -> Result<(StatusCode, Json<StoryResponse>), ApiError> {
-    let story = service::create_story(&state, auth.org_id, req).await?;
+    let story = service::create_story(&mut tx, req).await?;
+    tx.commit().await?;
     Ok((StatusCode::CREATED, Json(story)))
 }
 
@@ -92,11 +88,11 @@ pub(crate) async fn create_story(
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn get_story(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Path(id): Path<Uuid>,
 ) -> Result<Json<StoryResponse>, ApiError> {
-    let story = service::get_story(&state, auth.org_id, id).await?;
+    let story = service::get_story(&mut tx, id).await?;
+    tx.commit().await?;
     Ok(Json(story))
 }
 
@@ -118,12 +114,12 @@ pub(crate) async fn get_story(
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn update_story(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateStoryRequest>,
 ) -> Result<Json<StoryResponse>, ApiError> {
-    let story = service::update_story(&state, auth.org_id, id, req).await?;
+    let story = service::update_story(&mut tx, id, req).await?;
+    tx.commit().await?;
     Ok(Json(story))
 }
 
@@ -143,11 +139,11 @@ pub(crate) async fn update_story(
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn delete_story(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, ApiError> {
-    service::delete_story(&state, auth.org_id, id).await?;
+    service::delete_story(&mut tx, id).await?;
+    tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -169,12 +165,12 @@ pub(crate) async fn delete_story(
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn update_rank(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Path(id): Path<Uuid>,
     Json(req): Json<RankUpdateRequest>,
 ) -> Result<Json<StoryResponse>, ApiError> {
-    let story = service::update_rank(&state, auth.org_id, id, req).await?;
+    let story = service::update_rank(&mut tx, id, req).await?;
+    tx.commit().await?;
     Ok(Json(story))
 }
 
@@ -195,10 +191,12 @@ pub(crate) async fn update_rank(
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn start_story(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    State(_state): State<AppState>,
+    mut tx: OrgTx,
     Path(id): Path<Uuid>,
 ) -> Result<Json<StoryResponse>, ApiError> {
-    let story = service::start_story(&state, auth.org_id, id).await?;
+    let story = service::start_story(&mut tx, id).await?;
+    tx.commit().await?;
+    // TODO: trigger agents::send_start_grooming via _state when container pipeline is wired
     Ok(Json(story))
 }

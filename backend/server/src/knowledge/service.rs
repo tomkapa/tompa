@@ -1,6 +1,6 @@
 use uuid::Uuid;
 
-use crate::{auth::middleware::set_org_context, errors::ApiError, state::AppState};
+use crate::{db::OrgTx, errors::ApiError};
 
 use super::{
     repo,
@@ -25,21 +25,17 @@ fn to_response(row: repo::KnowledgeRow) -> KnowledgeResponse {
 }
 
 pub async fn list_knowledge(
-    state: &AppState,
-    org_id: Uuid,
+    tx: &mut OrgTx,
     project_id: Option<Uuid>,
     story_id: Option<Uuid>,
 ) -> Result<Vec<KnowledgeResponse>, ApiError> {
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
-    let rows = repo::list_knowledge(&mut tx, org_id, project_id, story_id).await?;
-    tx.commit().await?;
+    let org_id = tx.auth.org_id;
+    let rows = repo::list_knowledge(tx, org_id, project_id, story_id).await?;
     Ok(rows.into_iter().map(to_response).collect())
 }
 
 pub async fn create_knowledge(
-    state: &AppState,
-    org_id: Uuid,
+    tx: &mut OrgTx,
     req: CreateKnowledgeRequest,
 ) -> Result<KnowledgeResponse, ApiError> {
     let title = req.title.trim().to_string();
@@ -54,10 +50,9 @@ pub async fn create_knowledge(
     if !is_valid_category(&category) {
         return Err(KnowledgeError::InvalidCategory.into());
     }
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
+    let org_id = tx.auth.org_id;
     let row = repo::create_knowledge(
-        &mut tx,
+        tx,
         org_id,
         req.project_id,
         req.story_id,
@@ -66,13 +61,11 @@ pub async fn create_knowledge(
         &content,
     )
     .await?;
-    tx.commit().await?;
     Ok(to_response(row))
 }
 
 pub async fn update_knowledge(
-    state: &AppState,
-    org_id: Uuid,
+    tx: &mut OrgTx,
     id: Uuid,
     req: UpdateKnowledgeRequest,
 ) -> Result<KnowledgeResponse, ApiError> {
@@ -91,10 +84,9 @@ pub async fn update_knowledge(
     {
         return Err(KnowledgeError::InvalidCategory.into());
     }
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
+    let org_id = tx.auth.org_id;
     let row = repo::update_knowledge(
-        &mut tx,
+        tx,
         id,
         org_id,
         req.title.as_deref(),
@@ -103,15 +95,12 @@ pub async fn update_knowledge(
     )
     .await?
     .ok_or(ApiError::NotFound)?;
-    tx.commit().await?;
     Ok(to_response(row))
 }
 
-pub async fn delete_knowledge(state: &AppState, org_id: Uuid, id: Uuid) -> Result<(), ApiError> {
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
-    let deleted = repo::soft_delete_knowledge(&mut tx, id, org_id).await?;
-    tx.commit().await?;
+pub async fn delete_knowledge(tx: &mut OrgTx, id: Uuid) -> Result<(), ApiError> {
+    let org_id = tx.auth.org_id;
+    let deleted = repo::soft_delete_knowledge(tx, id, org_id).await?;
     if !deleted {
         return Err(ApiError::NotFound);
     }

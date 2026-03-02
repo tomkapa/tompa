@@ -14,7 +14,8 @@ async fn main() -> anyhow::Result<()> {
 
     let pool = db::create_pool(&config.database_url).await;
 
-    sqlx::migrate!("./migrations").run(&pool).await?;
+    // Migrations are run via `sqlx migrate run` in CI/deploy scripts,
+    // not at app startup.
 
     let state = AppState {
         pool,

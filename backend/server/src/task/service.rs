@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use uuid::Uuid;
 
-use crate::{auth::middleware::set_org_context, errors::ApiError, state::AppState};
+use crate::{db::OrgTx, errors::ApiError};
 
 use shared::enums::TaskState;
 
@@ -115,16 +115,9 @@ fn would_create_cycle(edges: &[(Uuid, Uuid)], task_id: Uuid, depends_on: Uuid) -
 
 // ── Public service functions ──────────────────────────────────────────────────
 
-pub async fn list_tasks(
-    state: &AppState,
-    org_id: Uuid,
-    story_id: Uuid,
-) -> Result<Vec<TaskResponse>, ApiError> {
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
-
-    let tasks = repo::list_tasks(&mut tx, story_id).await?;
-    let all_deps = repo::list_dependencies_for_story(&mut tx, story_id).await?;
+pub async fn list_tasks(tx: &mut OrgTx, story_id: Uuid) -> Result<Vec<TaskResponse>, ApiError> {
+    let tasks = repo::list_tasks(tx, story_id).await?;
+    let all_deps = repo::list_dependencies_for_story(tx, story_id).await?;
 
     // Group deps by task_id
     let mut deps_by_task: HashMap<Uuid, Vec<DependencyRow>> = HashMap::new();
@@ -140,28 +133,20 @@ pub async fn list_tasks(
         })
         .collect();
 
-    tx.commit().await?;
     Ok(result)
 }
 
-pub async fn get_task(state: &AppState, org_id: Uuid, id: Uuid) -> Result<TaskResponse, ApiError> {
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
-
-    let row = repo::get_task(&mut tx, id, org_id)
+pub async fn get_task(tx: &mut OrgTx, id: Uuid) -> Result<TaskResponse, ApiError> {
+    let org_id = tx.auth.org_id;
+    let row = repo::get_task(tx, id, org_id)
         .await?
         .ok_or(ApiError::NotFound)?;
 
-    let deps = repo::get_dependencies_for_task(&mut tx, id).await?;
-    tx.commit().await?;
+    let deps = repo::get_dependencies_for_task(tx, id).await?;
     Ok(to_task_response(row, deps))
 }
 
-pub async fn create_task(
-    state: &AppState,
-    org_id: Uuid,
-    req: CreateTaskRequest,
-) -> Result<TaskResponse, ApiError> {
+pub async fn create_task(tx: &mut OrgTx, req: CreateTaskRequest) -> Result<TaskResponse, ApiError> {
     let name = req.name.trim().to_string();
     if name.is_empty() {
         return Err(ApiError::BadRequest("name is required".into()));
@@ -173,23 +158,23 @@ pub async fn create_task(
         )));
     }
 
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
+    let org_id = tx.auth.org_id;
 
     // Verify the story exists in this org
-    let story_exists: Option<(Uuid,)> =
-        sqlx::query_as("SELECT id FROM stories WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL")
-            .bind(req.story_id)
-            .bind(org_id)
-            .fetch_optional(&mut *tx)
-            .await?;
+    let story_exists: Option<(Uuid,)> = sqlx::query_as(
+        "SELECT id FROM stories WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL",
+    )
+    .bind(req.story_id)
+    .bind(org_id)
+    .fetch_optional(&mut ***tx)
+    .await?;
 
     if story_exists.is_none() {
         return Err(TaskError::StoryNotFound.into());
     }
 
     let row = repo::create_task(
-        &mut tx,
+        tx,
         org_id,
         req.story_id,
         &name,
@@ -200,20 +185,17 @@ pub async fn create_task(
     )
     .await?;
 
-    tx.commit().await?;
     Ok(to_task_response(row, vec![]))
 }
 
 pub async fn update_task(
-    state: &AppState,
-    org_id: Uuid,
+    tx: &mut OrgTx,
     id: Uuid,
     req: UpdateTaskRequest,
 ) -> Result<TaskResponse, ApiError> {
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
+    let org_id = tx.auth.org_id;
 
-    let current = repo::get_task(&mut tx, id, org_id)
+    let current = repo::get_task(tx, id, org_id)
         .await?
         .ok_or(ApiError::NotFound)?;
 
@@ -222,7 +204,7 @@ pub async fn update_task(
     }
 
     let updated = repo::update_task(
-        &mut tx,
+        tx,
         id,
         org_id,
         req.name.as_deref(),
@@ -236,17 +218,13 @@ pub async fn update_task(
     .await?
     .ok_or(ApiError::NotFound)?;
 
-    let deps = repo::get_dependencies_for_task(&mut tx, id).await?;
-    tx.commit().await?;
+    let deps = repo::get_dependencies_for_task(tx, id).await?;
     Ok(to_task_response(updated, deps))
 }
 
-pub async fn delete_task(state: &AppState, org_id: Uuid, id: Uuid) -> Result<(), ApiError> {
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
-
-    let deleted = repo::soft_delete_task(&mut tx, id, org_id).await?;
-    tx.commit().await?;
+pub async fn delete_task(tx: &mut OrgTx, id: Uuid) -> Result<(), ApiError> {
+    let org_id = tx.auth.org_id;
+    let deleted = repo::soft_delete_task(tx, id, org_id).await?;
 
     if !deleted {
         return Err(ApiError::NotFound);
@@ -254,11 +232,10 @@ pub async fn delete_task(state: &AppState, org_id: Uuid, id: Uuid) -> Result<(),
     Ok(())
 }
 
-pub async fn mark_done(state: &AppState, org_id: Uuid, id: Uuid) -> Result<TaskResponse, ApiError> {
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
+pub async fn mark_done(tx: &mut OrgTx, id: Uuid) -> Result<TaskResponse, ApiError> {
+    let org_id = tx.auth.org_id;
 
-    let current = repo::get_task(&mut tx, id, org_id)
+    let current = repo::get_task(tx, id, org_id)
         .await?
         .ok_or(ApiError::NotFound)?;
 
@@ -266,27 +243,21 @@ pub async fn mark_done(state: &AppState, org_id: Uuid, id: Uuid) -> Result<TaskR
         return Err(TaskError::NotRunning.into());
     }
 
-    let updated = repo::mark_done(&mut tx, id, org_id)
+    let updated = repo::mark_done(tx, id, org_id)
         .await?
         .ok_or(ApiError::NotFound)?;
 
-    let deps = repo::get_dependencies_for_task(&mut tx, id).await?;
-    tx.commit().await?;
+    let deps = repo::get_dependencies_for_task(tx, id).await?;
     Ok(to_task_response(updated, deps))
 }
 
 // ── Dependency service functions ──────────────────────────────────────────────
 
 pub async fn list_dependencies(
-    state: &AppState,
-    org_id: Uuid,
+    tx: &mut OrgTx,
     story_id: Uuid,
 ) -> Result<Vec<DependencyResponse>, ApiError> {
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
-
-    let rows = repo::list_dependencies_for_story(&mut tx, story_id).await?;
-    tx.commit().await?;
+    let rows = repo::list_dependencies_for_story(tx, story_id).await?;
 
     Ok(rows
         .into_iter()
@@ -299,19 +270,17 @@ pub async fn list_dependencies(
 }
 
 pub async fn create_dependency(
-    state: &AppState,
-    org_id: Uuid,
+    tx: &mut OrgTx,
     req: CreateDependencyRequest,
 ) -> Result<DependencyResponse, ApiError> {
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
+    let org_id = tx.auth.org_id;
 
     // Verify both tasks exist and share a story
-    let task = repo::get_task(&mut tx, req.task_id, org_id)
+    let task = repo::get_task(tx, req.task_id, org_id)
         .await?
         .ok_or(ApiError::NotFound)?;
 
-    let depends_on = repo::get_task(&mut tx, req.depends_on_task_id, org_id)
+    let depends_on = repo::get_task(tx, req.depends_on_task_id, org_id)
         .await?
         .ok_or(ApiError::NotFound)?;
 
@@ -320,7 +289,7 @@ pub async fn create_dependency(
     }
 
     // Load all existing edges for the story and check for cycles
-    let existing = repo::list_dependencies_for_story(&mut tx, task.story_id).await?;
+    let existing = repo::list_dependencies_for_story(tx, task.story_id).await?;
     let edges: Vec<(Uuid, Uuid)> = existing
         .iter()
         .map(|d| (d.task_id, d.depends_on_task_id))
@@ -330,8 +299,7 @@ pub async fn create_dependency(
         return Err(TaskError::CyclicDependency.into());
     }
 
-    let row = repo::create_dependency(&mut tx, req.task_id, req.depends_on_task_id).await?;
-    tx.commit().await?;
+    let row = repo::create_dependency(tx, req.task_id, req.depends_on_task_id).await?;
 
     Ok(DependencyResponse {
         id: row.id,
@@ -340,12 +308,8 @@ pub async fn create_dependency(
     })
 }
 
-pub async fn delete_dependency(state: &AppState, org_id: Uuid, id: Uuid) -> Result<(), ApiError> {
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
-
-    let deleted = repo::delete_dependency(&mut tx, id).await?;
-    tx.commit().await?;
+pub async fn delete_dependency(tx: &mut OrgTx, id: Uuid) -> Result<(), ApiError> {
+    let deleted = repo::delete_dependency(tx, id).await?;
 
     if !deleted {
         return Err(ApiError::NotFound);

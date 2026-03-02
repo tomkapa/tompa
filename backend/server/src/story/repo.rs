@@ -137,6 +137,7 @@ pub async fn create_story(
 
 /// Partial update of title/description/status/owner/pipeline_stage.
 /// Fields that are `None` are left unchanged (COALESCE semantics).
+#[allow(clippy::too_many_arguments)]
 pub async fn update_story(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     id: Uuid,

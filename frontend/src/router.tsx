@@ -8,11 +8,17 @@ import {
 import { QueryClient } from '@tanstack/react-query'
 import { AppLayout } from '@/features/layout/app-layout'
 import { StoryModal } from '@/features/stories/story-modal'
+import { LoginPage } from '@/features/auth/login-page'
+import { me } from '@/api/generated/auth/auth'
 
-// ── Pages (placeholders) ─────────────────────────────────────────────────────
-// eslint-disable-next-line react-refresh/only-export-components
-function LoginPage() {
-  return <div className="p-8">Login</div>
+// ── Auth check ───────────────────────────────────────────────────────────────
+async function checkAuth() {
+  try {
+    const resp = await me({ credentials: 'include' })
+    return resp.status === 200
+  } catch {
+    return false
+  }
 }
 
 // ── Route tree ────────────────────────────────────────────────────────────────
@@ -23,20 +29,36 @@ const rootRoute = createRootRoute({
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
-  beforeLoad: () => {
-    throw redirect({ to: '/projects/$projectId', params: { projectId: 'default' } })
+  beforeLoad: async () => {
+    const authed = await checkAuth()
+    if (authed) {
+      throw redirect({ to: '/projects/$projectId', params: { projectId: 'default' } })
+    }
+    throw redirect({ to: '/login' })
   },
 })
 
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
+  beforeLoad: async () => {
+    const authed = await checkAuth()
+    if (authed) {
+      throw redirect({ to: '/projects/$projectId', params: { projectId: 'default' } })
+    }
+  },
   component: LoginPage,
 })
 
 const projectRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/projects/$projectId',
+  beforeLoad: async () => {
+    const authed = await checkAuth()
+    if (!authed) {
+      throw redirect({ to: '/login' })
+    }
+  },
   component: AppLayout,
 })
 

@@ -6,5 +6,12 @@
  *
  * Or configure globally via TanStack Query's default options.
  */
-export const credentialsFetch = (url: string, options?: RequestInit): Promise<Response> =>
-  fetch(url, { ...options, credentials: "include" });
+export const credentialsFetch = async (url: string, options?: RequestInit): Promise<Response> => {
+  const response = await fetch(url, { ...options, credentials: "include" });
+
+  if (response.status === 401) {
+    window.location.href = '/login';
+  }
+
+  return response;
+};

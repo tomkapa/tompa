@@ -44,10 +44,7 @@ pub fn router(state: AppState) -> Router<AppState> {
 /// Auth is checked manually before extracting `WebSocketUpgrade` so that
 /// missing/invalid tokens always produce 401 — even when the request lacks
 /// the `OnUpgrade` extension (e.g. in `tower::ServiceExt::oneshot` tests).
-async fn ws_handler(
-    State(state): State<AppState>,
-    req: axum::extract::Request,
-) -> Response {
+async fn ws_handler(State(state): State<AppState>, req: axum::extract::Request) -> Response {
     let (mut parts, _body) = req.into_parts();
 
     // 1. Authenticate via Bearer token.

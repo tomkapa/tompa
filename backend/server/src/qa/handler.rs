@@ -1,16 +1,12 @@
 use axum::{
     Json, Router,
-    extract::{Extension, Path, Query, State},
+    extract::{Path, Query},
     http::StatusCode,
     routing::{get, post},
 };
 use uuid::Uuid;
 
-use crate::{
-    auth::{middleware::require_auth, types::AuthContext},
-    errors::ApiError,
-    state::AppState,
-};
+use crate::{auth::middleware::require_auth, db::OrgTx, errors::ApiError, state::AppState};
 
 use super::{
     service,
@@ -45,11 +41,11 @@ pub fn router(state: AppState) -> Router<AppState> {
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn list_rounds(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Query(params): Query<ListQaRoundsParams>,
 ) -> Result<Json<Vec<QaRoundResponse>>, ApiError> {
-    let rounds = service::list_rounds(&state, auth.org_id, params).await?;
+    let rounds = service::list_rounds(&mut tx, params).await?;
+    tx.commit().await?;
     Ok(Json(rounds))
 }
 
@@ -71,12 +67,12 @@ pub(crate) async fn list_rounds(
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn submit_answer(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Path(id): Path<Uuid>,
     Json(req): Json<SubmitAnswerRequest>,
 ) -> Result<Json<QaRoundResponse>, ApiError> {
-    let round = service::submit_answer(&state, auth.org_id, id, auth.user_id, req).await?;
+    let round = service::submit_answer(&mut tx, id, req).await?;
+    tx.commit().await?;
     Ok(Json(round))
 }
 
@@ -97,11 +93,11 @@ pub(crate) async fn submit_answer(
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn rollback(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Path(id): Path<Uuid>,
 ) -> Result<Json<QaRoundResponse>, ApiError> {
-    let round = service::rollback(&state, auth.org_id, id).await?;
+    let round = service::rollback(&mut tx, id).await?;
+    tx.commit().await?;
     Ok(Json(round))
 }
 
@@ -118,10 +114,10 @@ pub(crate) async fn rollback(
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn course_correct(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Json(req): Json<CourseCorrectionRequest>,
 ) -> Result<(StatusCode, Json<QaRoundResponse>), ApiError> {
-    let round = service::course_correct(&state, auth.org_id, req).await?;
+    let round = service::course_correct(&mut tx, req).await?;
+    tx.commit().await?;
     Ok((StatusCode::CREATED, Json(round)))
 }

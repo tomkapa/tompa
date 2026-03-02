@@ -1,6 +1,6 @@
 use uuid::Uuid;
 
-use crate::{auth::middleware::set_org_context, errors::ApiError, state::AppState};
+use crate::{db::OrgTx, errors::ApiError};
 
 use super::{
     repo,
@@ -19,57 +19,42 @@ fn to_response(row: repo::ProjectRow) -> ProjectResponse {
     }
 }
 
-pub async fn list_projects(
-    state: &AppState,
-    org_id: Uuid,
-) -> Result<Vec<ProjectResponse>, ApiError> {
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
-    let rows = repo::list_projects(&mut tx, org_id).await?;
-    tx.commit().await?;
+pub async fn list_projects(tx: &mut OrgTx) -> Result<Vec<ProjectResponse>, ApiError> {
+    let org_id = tx.auth.org_id;
+    let rows = repo::list_projects(tx, org_id).await?;
     Ok(rows.into_iter().map(to_response).collect())
 }
 
-pub async fn get_project(
-    state: &AppState,
-    org_id: Uuid,
-    id: Uuid,
-) -> Result<ProjectResponse, ApiError> {
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
-    let row = repo::get_project(&mut tx, id, org_id)
+pub async fn get_project(tx: &mut OrgTx, id: Uuid) -> Result<ProjectResponse, ApiError> {
+    let org_id = tx.auth.org_id;
+    let row = repo::get_project(tx, id, org_id)
         .await?
         .ok_or(ApiError::NotFound)?;
-    tx.commit().await?;
     Ok(to_response(row))
 }
 
 pub async fn create_project(
-    state: &AppState,
-    org_id: Uuid,
+    tx: &mut OrgTx,
     req: CreateProjectRequest,
 ) -> Result<ProjectResponse, ApiError> {
     let name = req.name.trim().to_string();
     if name.is_empty() {
         return Err(ProjectError::NameRequired.into());
     }
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
+    let org_id = tx.auth.org_id;
     let row = repo::create_project(
-        &mut tx,
+        tx,
         org_id,
         &name,
         req.description.as_deref(),
         req.github_repo_url.as_deref(),
     )
     .await?;
-    tx.commit().await?;
     Ok(to_response(row))
 }
 
 pub async fn update_project(
-    state: &AppState,
-    org_id: Uuid,
+    tx: &mut OrgTx,
     id: Uuid,
     req: UpdateProjectRequest,
 ) -> Result<ProjectResponse, ApiError> {
@@ -78,10 +63,9 @@ pub async fn update_project(
     {
         return Err(ProjectError::NameRequired.into());
     }
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
+    let org_id = tx.auth.org_id;
     let row = repo::update_project(
-        &mut tx,
+        tx,
         id,
         org_id,
         req.name.as_deref(),
@@ -90,15 +74,12 @@ pub async fn update_project(
     )
     .await?
     .ok_or(ApiError::NotFound)?;
-    tx.commit().await?;
     Ok(to_response(row))
 }
 
-pub async fn delete_project(state: &AppState, org_id: Uuid, id: Uuid) -> Result<(), ApiError> {
-    let mut tx = state.pool.begin().await?;
-    set_org_context(&mut tx, org_id).await?;
-    let deleted = repo::soft_delete_project(&mut tx, id, org_id).await?;
-    tx.commit().await?;
+pub async fn delete_project(tx: &mut OrgTx, id: Uuid) -> Result<(), ApiError> {
+    let org_id = tx.auth.org_id;
+    let deleted = repo::soft_delete_project(tx, id, org_id).await?;
     if !deleted {
         return Err(ApiError::NotFound);
     }

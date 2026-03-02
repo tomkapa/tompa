@@ -1,16 +1,12 @@
 use axum::{
     Json, Router,
-    extract::{Extension, Path, Query, State},
+    extract::{Path, Query},
     http::StatusCode,
     routing::{delete, get, post},
 };
 use uuid::Uuid;
 
-use crate::{
-    auth::{middleware::require_auth, types::AuthContext},
-    errors::ApiError,
-    state::AppState,
-};
+use crate::{auth::middleware::require_auth, db::OrgTx, errors::ApiError, state::AppState};
 
 use super::{
     service,
@@ -51,11 +47,11 @@ pub fn router(state: AppState) -> Router<AppState> {
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn list_tasks(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Query(params): Query<ListTasksParams>,
 ) -> Result<Json<Vec<TaskResponse>>, ApiError> {
-    let tasks = service::list_tasks(&state, auth.org_id, params.story_id).await?;
+    let tasks = service::list_tasks(&mut tx, params.story_id).await?;
+    tx.commit().await?;
     Ok(Json(tasks))
 }
 
@@ -74,11 +70,11 @@ pub(crate) async fn list_tasks(
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn create_task(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Json(req): Json<CreateTaskRequest>,
 ) -> Result<(StatusCode, Json<TaskResponse>), ApiError> {
-    let task = service::create_task(&state, auth.org_id, req).await?;
+    let task = service::create_task(&mut tx, req).await?;
+    tx.commit().await?;
     Ok((StatusCode::CREATED, Json(task)))
 }
 
@@ -98,11 +94,11 @@ pub(crate) async fn create_task(
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn get_task(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Path(id): Path<Uuid>,
 ) -> Result<Json<TaskResponse>, ApiError> {
-    let task = service::get_task(&state, auth.org_id, id).await?;
+    let task = service::get_task(&mut tx, id).await?;
+    tx.commit().await?;
     Ok(Json(task))
 }
 
@@ -124,12 +120,12 @@ pub(crate) async fn get_task(
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn update_task(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateTaskRequest>,
 ) -> Result<Json<TaskResponse>, ApiError> {
-    let task = service::update_task(&state, auth.org_id, id, req).await?;
+    let task = service::update_task(&mut tx, id, req).await?;
+    tx.commit().await?;
     Ok(Json(task))
 }
 
@@ -149,11 +145,11 @@ pub(crate) async fn update_task(
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn delete_task(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, ApiError> {
-    service::delete_task(&state, auth.org_id, id).await?;
+    service::delete_task(&mut tx, id).await?;
+    tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -174,11 +170,11 @@ pub(crate) async fn delete_task(
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn mark_done(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Path(id): Path<Uuid>,
 ) -> Result<Json<TaskResponse>, ApiError> {
-    let task = service::mark_done(&state, auth.org_id, id).await?;
+    let task = service::mark_done(&mut tx, id).await?;
+    tx.commit().await?;
     Ok(Json(task))
 }
 
@@ -197,11 +193,11 @@ pub(crate) async fn mark_done(
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn list_dependencies(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Query(params): Query<ListDependenciesParams>,
 ) -> Result<Json<Vec<DependencyResponse>>, ApiError> {
-    let deps = service::list_dependencies(&state, auth.org_id, params.story_id).await?;
+    let deps = service::list_dependencies(&mut tx, params.story_id).await?;
+    tx.commit().await?;
     Ok(Json(deps))
 }
 
@@ -220,11 +216,11 @@ pub(crate) async fn list_dependencies(
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn create_dependency(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Json(req): Json<CreateDependencyRequest>,
 ) -> Result<(StatusCode, Json<DependencyResponse>), ApiError> {
-    let dep = service::create_dependency(&state, auth.org_id, req).await?;
+    let dep = service::create_dependency(&mut tx, req).await?;
+    tx.commit().await?;
     Ok((StatusCode::CREATED, Json(dep)))
 }
 
@@ -244,10 +240,10 @@ pub(crate) async fn create_dependency(
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn delete_dependency(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, ApiError> {
-    service::delete_dependency(&state, auth.org_id, id).await?;
+    service::delete_dependency(&mut tx, id).await?;
+    tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
 }

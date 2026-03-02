@@ -1,16 +1,12 @@
 use axum::{
     Json, Router,
-    extract::{Extension, Path, Query, State},
+    extract::{Path, Query},
     http::StatusCode,
     routing::{delete, get},
 };
 use uuid::Uuid;
 
-use crate::{
-    auth::{middleware::require_auth, types::AuthContext},
-    errors::ApiError,
-    state::AppState,
-};
+use crate::{auth::middleware::require_auth, db::OrgTx, errors::ApiError, state::AppState};
 
 use super::{
     service,
@@ -39,11 +35,11 @@ pub fn router(state: AppState) -> Router<AppState> {
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn list_keys(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Query(params): Query<ListKeysParams>,
 ) -> Result<Json<Vec<KeyListItem>>, ApiError> {
-    let keys = service::list_keys(&state, auth.org_id, params.project_id).await?;
+    let keys = service::list_keys(&mut tx, params.project_id).await?;
+    tx.commit().await?;
     Ok(Json(keys))
 }
 
@@ -62,11 +58,11 @@ pub(crate) async fn list_keys(
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn create_key(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Json(req): Json<CreateKeyRequest>,
 ) -> Result<(StatusCode, Json<CreateKeyResponse>), ApiError> {
-    let key = service::create_key(&state, auth.org_id, req).await?;
+    let key = service::create_key(&mut tx, req).await?;
+    tx.commit().await?;
     Ok((StatusCode::CREATED, Json(key)))
 }
 
@@ -86,10 +82,10 @@ pub(crate) async fn create_key(
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn revoke_key(
-    State(state): State<AppState>,
-    Extension(auth): Extension<AuthContext>,
+    mut tx: OrgTx,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, ApiError> {
-    service::revoke_key(&state, auth.org_id, id).await?;
+    service::revoke_key(&mut tx, id).await?;
+    tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
 }
