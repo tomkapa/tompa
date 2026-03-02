@@ -20,7 +20,7 @@ use super::{
 pub fn router(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/api/v1/container-keys", get(list_keys).post(create_key))
-        .route("/api/v1/container-keys/:id", delete(revoke_key))
+        .route("/api/v1/container-keys/{id}", delete(revoke_key))
         .route_layer(axum::middleware::from_fn_with_state(state, require_auth))
 }
 

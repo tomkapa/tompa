@@ -21,7 +21,7 @@ pub fn router(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/api/v1/projects", get(list_projects).post(create_project))
         .route(
-            "/api/v1/projects/:id",
+            "/api/v1/projects/{id}",
             get(get_project)
                 .patch(update_project)
                 .delete(delete_project),

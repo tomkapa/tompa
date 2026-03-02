@@ -24,15 +24,15 @@ pub fn router(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/api/v1/tasks", get(list_tasks).post(create_task))
         .route(
-            "/api/v1/tasks/:id",
+            "/api/v1/tasks/{id}",
             get(get_task).patch(update_task).delete(delete_task),
         )
-        .route("/api/v1/tasks/:id/done", post(mark_done))
+        .route("/api/v1/tasks/{id}/done", post(mark_done))
         .route(
             "/api/v1/task-dependencies",
             get(list_dependencies).post(create_dependency),
         )
-        .route("/api/v1/task-dependencies/:id", delete(delete_dependency))
+        .route("/api/v1/task-dependencies/{id}", delete(delete_dependency))
         .route_layer(axum::middleware::from_fn_with_state(state, require_auth))
 }
 

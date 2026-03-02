@@ -23,11 +23,11 @@ pub fn router(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/api/v1/stories", get(list_stories).post(create_story))
         .route(
-            "/api/v1/stories/:id",
+            "/api/v1/stories/{id}",
             get(get_story).patch(update_story).delete(delete_story),
         )
-        .route("/api/v1/stories/:id/rank", patch(update_rank))
-        .route("/api/v1/stories/:id/start", post(start_story))
+        .route("/api/v1/stories/{id}/rank", patch(update_rank))
+        .route("/api/v1/stories/{id}/start", post(start_story))
         .route_layer(axum::middleware::from_fn_with_state(state, require_auth))
 }
 

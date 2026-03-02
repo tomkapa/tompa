@@ -41,7 +41,7 @@ sqlx = { version = "0.8", features = [
 dashmap = "6"
 
 # Auth
-jsonwebtoken = "10"
+jsonwebtoken = { version = "10", features = ["aws_lc_rs"] }
 bcrypt = "0.18"
 rand = "0.10"
 base64 = "0.22"
@@ -65,3 +65,5 @@ rust-embed = "8"
 # Test
 tempfile = "3"
 ctor = "0.6"
+testcontainers = { version = "0.27", features = ["blocking"] }
+testcontainers-modules = { version = "0.15", features = ["blocking", "postgres"] }

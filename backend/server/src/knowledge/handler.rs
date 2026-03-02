@@ -26,7 +26,7 @@ pub fn router(state: AppState) -> Router<AppState> {
             get(list_knowledge).post(create_knowledge),
         )
         .route(
-            "/api/v1/knowledge/:id",
+            "/api/v1/knowledge/{id}",
             patch(update_knowledge).delete(delete_knowledge),
         )
         .route_layer(axum::middleware::from_fn_with_state(state, require_auth))

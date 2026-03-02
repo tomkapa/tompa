@@ -22,8 +22,8 @@ pub fn router(state: AppState) -> Router<AppState> {
         .route("/api/v1/qa-rounds", get(list_rounds))
         // Static path must be registered before the parameterized :id routes.
         .route("/api/v1/qa-rounds/course-correct", post(course_correct))
-        .route("/api/v1/qa-rounds/:id/answer", post(submit_answer))
-        .route("/api/v1/qa-rounds/:id/rollback", post(rollback))
+        .route("/api/v1/qa-rounds/{id}/answer", post(submit_answer))
+        .route("/api/v1/qa-rounds/{id}/rollback", post(rollback))
         .route_layer(axum::middleware::from_fn_with_state(state, require_auth))
 }
 
