@@ -1,12 +1,9 @@
-export interface QaOption {
-  text: string
-}
-
 export interface QaQuestion {
   id: string
   domain: string
   text: string
-  options: QaOption[]
+  /** Option strings from the API (mirrors QaQuestion.options: string[] in generated schema) */
+  options: string[]
   /** Index of the selected predefined option, if answered */
   answeredIndex?: number
   /** Free-form "other" answer text, if answered with custom input */

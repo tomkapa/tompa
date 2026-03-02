@@ -98,7 +98,7 @@ function QuestionBlock({
         {question.options.map((opt, idx) => (
           <AnswerOptionCard
             key={idx}
-            text={opt.text}
+            text={opt}
             selected={isAnswered && question.answeredIndex === idx}
             disabled={isAnswered && question.answeredIndex !== idx}
             onSelect={() => handleSelectOption(idx)}

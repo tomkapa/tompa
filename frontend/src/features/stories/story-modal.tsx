@@ -51,7 +51,7 @@ function mapApiRound(r: QaRoundResponse): QaRound {
       id: q.id,
       domain: q.domain,
       text: q.text,
-      options: q.options.map((o) => ({ text: o })),
+      options: q.options,
       answeredIndex: q.selected_answer_index ?? undefined,
       answeredText: q.selected_answer_text ?? undefined,
     })),

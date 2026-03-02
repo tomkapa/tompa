@@ -6,40 +6,13 @@ import {
   Outlet,
 } from '@tanstack/react-router'
 import { QueryClient } from '@tanstack/react-query'
+import { AppLayout } from '@/features/layout/app-layout'
+import { StoryModal } from '@/features/stories/story-modal'
 
 // ── Pages (placeholders) ─────────────────────────────────────────────────────
 // eslint-disable-next-line react-refresh/only-export-components
 function LoginPage() {
   return <div className="p-8">Login</div>
-}
-
-// eslint-disable-next-line react-refresh/only-export-components
-function ProjectPage() {
-  return (
-    <div className="p-8">
-      <Outlet />
-    </div>
-  )
-}
-
-// eslint-disable-next-line react-refresh/only-export-components
-function StoriesTable() {
-  return <div>Stories table</div>
-}
-
-// eslint-disable-next-line react-refresh/only-export-components
-function StoryModal() {
-  return (
-    <div>
-      Story modal
-      <Outlet />
-    </div>
-  )
-}
-
-// eslint-disable-next-line react-refresh/only-export-components
-function TaskDetail() {
-  return <div>Task detail</div>
 }
 
 // ── Route tree ────────────────────────────────────────────────────────────────
@@ -64,13 +37,13 @@ const loginRoute = createRoute({
 const projectRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/projects/$projectId',
-  component: ProjectPage,
+  component: AppLayout,
 })
 
 const storiesTableRoute = createRoute({
   getParentRoute: () => projectRoute,
   path: '/',
-  component: StoriesTable,
+  component: () => null,
 })
 
 const storyModalRoute = createRoute({
@@ -82,7 +55,7 @@ const storyModalRoute = createRoute({
 const taskDetailRoute = createRoute({
   getParentRoute: () => storyModalRoute,
   path: '/tasks/$taskId',
-  component: TaskDetail,
+  component: () => null,
 })
 
 const routeTree = rootRoute.addChildren([

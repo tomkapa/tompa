@@ -17,6 +17,8 @@ import {
   getListStoriesQueryKey,
 } from '@/api/generated/stories/stories'
 import type { StoryResponse } from '@/api/generated/tompaAPI.schemas'
+import { useSSE } from '@/hooks/use-sse'
+import { useSSEStore } from '@/stores/sse-store'
 
 // ── Data mapping ──────────────────────────────────────────────────────────────
 
@@ -134,6 +136,10 @@ export function AppLayout() {
 
   const [searchValue, setSearchValue] = React.useState('')
 
+  // ── SSE connection ─────────────────────────────────────────────────────────
+  useSSE(projectId)
+  const hasNotification = useSSEStore((s) => s.hasNotification)
+
   // ── Fetch stories ──────────────────────────────────────────────────────────
   const { data: storiesResp } = useListStories(
     { project_id: projectId },
@@ -201,9 +207,6 @@ export function AppLayout() {
   }
 
   const isModalOpen = !!storyId
-  const hasNotification = apiStories.some((s) =>
-    s.tasks.some((t) => t.state === 'paused'),
-  )
 
   return (
     <div className={cn('flex h-screen flex-col overflow-hidden bg-background')}>
