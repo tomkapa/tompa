@@ -2,3 +2,8 @@
 **/target
 .env
 .playwright-mcp
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+frontend/e2e/.auth/user.json
+frontend/e2e/.auth/seed.json

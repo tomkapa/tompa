@@ -314,11 +314,13 @@ export function AppLayout() {
   }
 
   function handleReorder(reorderedStoryId: string, beforeId?: string, afterId?: string) {
+    // beforeId = item above the target in the new order (target goes AFTER it)
+    // afterId  = item below the target in the new order (target goes BEFORE it)
     updateRankMutation.mutate({
       id: reorderedStoryId,
       data: {
-        before_id: beforeId ?? undefined,
-        after_id: afterId ?? undefined,
+        after_id: beforeId ?? undefined,
+        before_id: afterId ?? undefined,
       },
     })
   }
