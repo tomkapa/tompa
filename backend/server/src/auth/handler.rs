@@ -12,7 +12,7 @@ use super::{
     service::{
         create_jwt, exchange_github_code, exchange_google_code, find_or_create_user, make_claims,
     },
-    types::{AuthContext, MeResponse},
+    types::{AuthContext, MeResponse, OAuthProfile},
 };
 
 const SESSION_MAX_AGE: u64 = 7 * 24 * 3600; // 7 days
@@ -200,6 +200,59 @@ pub(crate) async fn me(
         org_name: org.map(|o| o.name),
         role: auth.role,
     }))
+}
+
+// ── Dev Login ─────────────────────────────────────────────────────────────
+
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct DevLoginRequest {
+    pub email: String,
+    pub display_name: String,
+}
+
+/// POST /api/v1/auth/dev-login
+/// Creates a session without OAuth. Only available when `DEV_MODE=true`.
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/dev-login",
+    tag = "auth",
+    request_body = DevLoginRequest,
+    responses(
+        (status = 302, description = "Redirect to app root with session cookie set"),
+        (status = 403, description = "Dev login not enabled"),
+    )
+)]
+pub(crate) async fn dev_login(
+    State(state): State<AppState>,
+    Json(body): Json<DevLoginRequest>,
+) -> Result<Response, ApiError> {
+    if !state.config.dev_mode {
+        return Err(ApiError::Forbidden);
+    }
+
+    let profile = OAuthProfile {
+        provider: "dev".to_string(),
+        provider_id: format!("dev-{}", body.email),
+        email: body.email,
+        display_name: body.display_name,
+        avatar_url: None,
+    };
+
+    let user_org = find_or_create_user(&state.pool, &profile)
+        .await
+        .map_err(ApiError::Internal)?;
+
+    let claims = make_claims(user_org.user_id, user_org.org_id, &user_org.role);
+    let token = create_jwt(&claims, &state.config.jwt_secret).map_err(ApiError::Internal)?;
+
+    let cookie = build_session_cookie(&token, false);
+
+    let mut response = Redirect::to("/").into_response();
+    response.headers_mut().insert(
+        header::SET_COOKIE,
+        HeaderValue::from_str(&cookie).expect("JWT cookie value always forms a valid header"),
+    );
+    Ok(response)
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

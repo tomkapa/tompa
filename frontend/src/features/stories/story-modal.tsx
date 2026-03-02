@@ -406,12 +406,12 @@ function TaskViewContent({
  * **Task View** when both `storyId` and `taskId` are present.
  *
  * URL patterns:
- *   /projects/:projectId/stories/:storyId          → Story View
- *   /projects/:projectId/stories/:storyId/tasks/:taskId → Task View
+ *   /projects/:projectSlug/stories/:storyId          → Story View
+ *   /projects/:projectSlug/stories/:storyId/tasks/:taskId → Task View
  */
 export function StoryModal() {
   const allParams = useParams({ strict: false }) as Record<string, string | undefined>
-  const projectId = allParams.projectId ?? ''
+  const projectSlug = allParams.projectSlug ?? ''
   const storyId = allParams.storyId ?? ''
   const taskId = allParams.taskId
   const isTaskView = !!taskId
@@ -521,28 +521,28 @@ export function StoryModal() {
     if (hasPendingQuestions(apiRounds)) {
       setConfirmOpen(true)
     } else {
-      void navigate({ to: '/projects/$projectId', params: { projectId } })
+      void navigate({ to: '/projects/$projectSlug', params: { projectSlug } })
     }
   }
 
   function handleLeave() {
     setConfirmOpen(false)
-    void navigate({ to: '/projects/$projectId', params: { projectId } })
+    void navigate({ to: '/projects/$projectSlug', params: { projectSlug } })
   }
 
   // ── Task click (navigate from story → task) ────────────────────────────────
   function handleTaskClick(clickedTaskId: string) {
     void navigate({
-      to: '/projects/$projectId/stories/$storyId/tasks/$taskId',
-      params: { projectId, storyId, taskId: clickedTaskId },
+      to: '/projects/$projectSlug/stories/$storyId/tasks/$taskId',
+      params: { projectSlug, storyId, taskId: clickedTaskId },
     })
   }
 
   // ── Story click in breadcrumb (task → story) ───────────────────────────────
   function handleStoryClick() {
     void navigate({
-      to: '/projects/$projectId/stories/$storyId',
-      params: { projectId, storyId },
+      to: '/projects/$projectSlug/stories/$storyId',
+      params: { projectSlug, storyId },
     })
   }
 
@@ -550,12 +550,12 @@ export function StoryModal() {
   const storyTitle = story?.title ?? storyId
   const breadcrumbSegments = isTaskView
     ? [
-        { label: projectId, onClick: handleCloseAttempt },
+        { label: projectSlug, onClick: handleCloseAttempt },
         { label: storyTitle, onClick: handleStoryClick },
         { label: taskId ?? '' },
       ]
     : [
-        { label: projectId, onClick: handleCloseAttempt },
+        { label: projectSlug, onClick: handleCloseAttempt },
         { label: storyTitle },
       ]
 

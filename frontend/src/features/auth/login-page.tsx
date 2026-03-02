@@ -10,6 +10,16 @@ function handleOAuthLogin(provider: 'github' | 'google') {
   window.location.href = `/api/v1/auth/login/${provider}`
 }
 
+async function handleDevLogin() {
+  await fetch('/api/v1/auth/dev-login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ email: 'dev@localhost', display_name: 'Dev User' }),
+  })
+  window.location.href = '/'
+}
+
 export function LoginPage() {
   return (
     <div className="flex h-screen bg-background">
@@ -87,6 +97,16 @@ export function LoginPage() {
                 Google
               </button>
             </div>
+
+            {import.meta.env.DEV && (
+              <button
+                type="button"
+                onClick={handleDevLogin}
+                className="flex w-full items-center justify-center gap-2 rounded-full border-2 border-dashed border-muted-foreground/30 px-4 py-3.5 text-sm font-medium text-muted-foreground transition-colors hover:border-muted-foreground/50 hover:text-foreground"
+              >
+                Dev Login
+              </button>
+            )}
           </div>
         </div>
 

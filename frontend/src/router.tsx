@@ -32,7 +32,7 @@ const indexRoute = createRoute({
   beforeLoad: async () => {
     const authed = await checkAuth()
     if (authed) {
-      throw redirect({ to: '/projects/$projectId', params: { projectId: 'default' } })
+      throw redirect({ to: '/projects/$projectSlug', params: { projectSlug: 'default' } })
     }
     throw redirect({ to: '/login' })
   },
@@ -44,7 +44,7 @@ const loginRoute = createRoute({
   beforeLoad: async () => {
     const authed = await checkAuth()
     if (authed) {
-      throw redirect({ to: '/projects/$projectId', params: { projectId: 'default' } })
+      throw redirect({ to: '/projects/$projectSlug', params: { projectSlug: 'default' } })
     }
   },
   component: LoginPage,
@@ -52,7 +52,7 @@ const loginRoute = createRoute({
 
 const projectRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/projects/$projectId',
+  path: '/projects/$projectSlug',
   beforeLoad: async () => {
     const authed = await checkAuth()
     if (!authed) {

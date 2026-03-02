@@ -28,6 +28,7 @@ impl Modify for CookieAuth {
         crate::auth::handler::callback,
         crate::auth::handler::logout,
         crate::auth::handler::me,
+        crate::auth::handler::dev_login,
         crate::orgs::handler::list_orgs,
         crate::orgs::handler::create_org,
         crate::project::handler::list_projects,
@@ -65,6 +66,7 @@ impl Modify for CookieAuth {
     ),
     components(schemas(
         crate::auth::types::MeResponse,
+        crate::auth::handler::DevLoginRequest,
         crate::orgs::types::CreateOrgRequest,
         crate::orgs::types::OrgResponse,
         crate::project::types::CreateProjectRequest,

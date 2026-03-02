@@ -9,6 +9,8 @@ import { Input } from '@/components/ui/input'
 import { AttentionDot } from '@/components/ui/attention-dot'
 import { StoriesTable } from '@/features/stories/stories-table'
 import { StoryModal } from '@/features/stories/story-modal'
+import { StoryCreation } from '@/features/stories/story-creation'
+import type { StoryFormData } from '@/features/stories/story-creation'
 import { ProjectSelector } from '@/features/projects/project-selector'
 import { CreateProjectModal } from '@/features/projects/create-project-modal'
 import type { CreateProjectFormData } from '@/features/projects/create-project-modal'
@@ -25,9 +27,19 @@ import {
   getListProjectsQueryKey,
 } from '@/api/generated/projects/projects'
 import type { StoryResponse } from '@/api/generated/tompaAPI.schemas'
+import { useAuth } from '@/hooks/use-auth'
 import { useSSE } from '@/hooks/use-sse'
 import { useSSEStore } from '@/stores/sse-store'
 import { useToastStore } from '@/stores/toast-store'
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+export function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+}
 
 // ── Data mapping ──────────────────────────────────────────────────────────────
 
@@ -146,20 +158,18 @@ function AppHeader({ searchValue, onSearchChange, hasNotification, projectSelect
  */
 export function AppLayout() {
   const allParams = useParams({ strict: false }) as Record<string, string | undefined>
-  const projectId = allParams.projectId ?? ''
+  const projectSlug = allParams.projectSlug ?? ''
   const storyId = allParams.storyId
 
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { user } = useAuth()
 
   const [searchValue, setSearchValue] = React.useState('')
   const [createProjectOpen, setCreateProjectOpen] = React.useState(false)
+  const [storyCreationOpen, setStoryCreationOpen] = React.useState(false)
 
-  // ── SSE connection ─────────────────────────────────────────────────────────
-  useSSE(projectId)
-  const hasNotification = useSSEStore((s) => s.hasNotification)
-
-  // ── Fetch projects ────────────────────────────────────────────────────────
+  // ── Derive project ID from slug ───────────────────────────────────────────
   const { data: projectsResp } = useListProjects(
     undefined,
     { fetch: { credentials: 'include' } },
@@ -169,21 +179,31 @@ export function AppLayout() {
     [projectsResp],
   )
 
-  // Redirect to first project if current is "default" and projects are loaded
+  const activeProject = React.useMemo(
+    () => projects.find((p) => slugify(p.name) === projectSlug),
+    [projects, projectSlug],
+  )
+  const projectId = activeProject?.id ?? ''
+
+  // ── SSE connection ─────────────────────────────────────────────────────────
+  useSSE(projectId)
+  const hasNotification = useSSEStore((s) => s.hasNotification)
+
+  // Redirect to first project if current slug is "default" and projects are loaded
   React.useEffect(() => {
-    if (projectId === 'default' && projects.length > 0) {
+    if (projectSlug === 'default' && projects.length > 0) {
       void navigate({
-        to: '/projects/$projectId',
-        params: { projectId: projects[0].id },
+        to: '/projects/$projectSlug',
+        params: { projectSlug: slugify(projects[0].name) },
         replace: true,
       })
     }
-  }, [projectId, projects, navigate])
+  }, [projectSlug, projects, navigate])
 
   // ── Fetch stories ──────────────────────────────────────────────────────────
   const { data: storiesResp, isLoading: storiesLoading } = useListStories(
     { project_id: projectId },
-    { query: { enabled: !!projectId && projectId !== 'default' } },
+    { query: { enabled: !!projectId } },
   )
   const stories = React.useMemo(() => {
     const apiStories = storiesResp?.status === 200 ? storiesResp.data : []
@@ -201,14 +221,18 @@ export function AppLayout() {
   const createProjectMutation = useCreateProject({
     mutation: {
       onSuccess: (resp) => {
+        if ((resp.status as number) === 409) {
+          useToastStore.getState().addToast({ variant: 'error', title: 'A project with that name already exists' })
+          return
+        }
         void queryClient.invalidateQueries({
           queryKey: getListProjectsQueryKey(),
         })
         setCreateProjectOpen(false)
         if (resp.status === 201) {
           void navigate({
-            to: '/projects/$projectId',
-            params: { projectId: resp.data.id },
+            to: '/projects/$projectSlug',
+            params: { projectSlug: slugify(resp.data.name) },
           })
         }
       },
@@ -247,9 +271,11 @@ export function AppLayout() {
 
   // ── Callbacks ──────────────────────────────────────────────────────────────
   function handleProjectSelect(selectedProjectId: string) {
+    const selected = projects.find((p) => p.id === selectedProjectId)
+    if (!selected) return
     void navigate({
-      to: '/projects/$projectId',
-      params: { projectId: selectedProjectId },
+      to: '/projects/$projectSlug',
+      params: { projectSlug: slugify(selected.name) },
     })
   }
 
@@ -265,21 +291,26 @@ export function AppLayout() {
 
   function handleStoryClick(clickedStoryId: string) {
     void navigate({
-      to: '/projects/$projectId/stories/$storyId',
-      params: { projectId, storyId: clickedStoryId },
+      to: '/projects/$projectSlug/stories/$storyId',
+      params: { projectSlug, storyId: clickedStoryId },
     })
   }
 
   function handleNewStory() {
+    setStoryCreationOpen(true)
+  }
+
+  function handleCreateStory(formData: StoryFormData) {
     createStoryMutation.mutate({
       data: {
         project_id: projectId,
-        title: 'New Story',
-        description: '',
-        story_type: 'feature',
-        owner_id: '',
+        title: formData.title,
+        description: formData.description,
+        story_type: formData.storyType,
+        owner_id: formData.ownerId || user?.user_id || '',
       },
     })
+    setStoryCreationOpen(false)
   }
 
   function handleReorder(reorderedStoryId: string, beforeId?: string, afterId?: string) {
@@ -354,6 +385,16 @@ export function AppLayout() {
         onOpenChange={setCreateProjectOpen}
         onSubmit={handleCreateProject}
         isLoading={createProjectMutation.isPending}
+      />
+
+      {/* Create Story Modal */}
+      <StoryCreation
+        open={storyCreationOpen}
+        onOpenChange={setStoryCreationOpen}
+        owners={user ? [{ id: user.user_id, name: user.display_name }] : []}
+        isGenerating={createStoryMutation.isPending}
+        onRequestExpansion={handleCreateStory}
+        onApprove={(data, _editedDescription) => handleCreateStory(data)}
       />
     </div>
   )

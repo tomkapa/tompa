@@ -10,6 +10,8 @@ pub enum ProjectError {
     NotFound,
     #[error("Project name is required")]
     NameRequired,
+    #[error("A project with that name already exists")]
+    NameTaken,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]

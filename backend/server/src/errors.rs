@@ -72,6 +72,7 @@ fn map_domain_error(err: &ApiError) -> (StatusCode, String) {
         ApiError::Project(e) => match e {
             ProjectError::NotFound => (StatusCode::NOT_FOUND, e.to_string()),
             ProjectError::NameRequired => (StatusCode::BAD_REQUEST, e.to_string()),
+            ProjectError::NameTaken => (StatusCode::CONFLICT, e.to_string()),
         },
         ApiError::Org(e) => match e {
             OrgError::NotFound => (StatusCode::NOT_FOUND, e.to_string()),

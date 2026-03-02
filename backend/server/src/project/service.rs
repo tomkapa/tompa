@@ -7,6 +7,15 @@ use super::{
     types::{CreateProjectRequest, ProjectError, ProjectResponse, UpdateProjectRequest},
 };
 
+fn unique_violation_to_name_taken(e: sqlx::Error) -> ApiError {
+    if let sqlx::Error::Database(ref db_err) = e
+        && db_err.code().as_deref() == Some("23505")
+    {
+        return ProjectError::NameTaken.into();
+    }
+    e.into()
+}
+
 fn to_response(row: repo::ProjectRow) -> ProjectResponse {
     ProjectResponse {
         id: row.id,
@@ -49,7 +58,8 @@ pub async fn create_project(
         req.description.as_deref(),
         req.github_repo_url.as_deref(),
     )
-    .await?;
+    .await
+    .map_err(unique_violation_to_name_taken)?;
     Ok(to_response(row))
 }
 
@@ -72,7 +82,8 @@ pub async fn update_project(
         req.description.as_deref(),
         req.github_repo_url.as_deref(),
     )
-    .await?
+    .await
+    .map_err(unique_violation_to_name_taken)?
     .ok_or(ApiError::NotFound)?;
     Ok(to_response(row))
 }

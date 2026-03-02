@@ -56,6 +56,7 @@ fn test_state(pool: PgPool) -> AppState {
             github_client_id: String::new(),
             github_client_secret: String::new(),
             oauth_redirect_base_url: String::new(),
+            dev_mode: false,
         }),
         registry: Arc::new(DashMapRegistry::new()),
         broadcaster: Arc::new(SseBroadcaster::new()),
