@@ -9,11 +9,11 @@ use std::{
 use axum::{
     Router,
     extract::{
-        State,
+        FromRequestParts, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
-    http::{HeaderMap, StatusCode, header},
-    response::IntoResponse,
+    http::{StatusCode, header, request::Parts},
+    response::{IntoResponse, Response},
     routing::get,
 };
 use futures_util::{SinkExt, StreamExt};
@@ -40,12 +40,18 @@ pub fn router(state: AppState) -> Router<AppState> {
 ///
 /// Performs Bearer-token authentication before accepting the WebSocket
 /// upgrade.  Returns 401 if the token is absent or invalid.
+///
+/// Auth is checked manually before extracting `WebSocketUpgrade` so that
+/// missing/invalid tokens always produce 401 — even when the request lacks
+/// the `OnUpgrade` extension (e.g. in `tower::ServiceExt::oneshot` tests).
 async fn ws_handler(
     State(state): State<AppState>,
-    ws: WebSocketUpgrade,
-    headers: HeaderMap,
-) -> impl IntoResponse {
-    let raw_key = match extract_bearer(&headers) {
+    req: axum::extract::Request,
+) -> Response {
+    let (mut parts, _body) = req.into_parts();
+
+    // 1. Authenticate via Bearer token.
+    let raw_key = match extract_bearer(&parts) {
         Some(k) => k,
         None => return StatusCode::UNAUTHORIZED.into_response(),
     };
@@ -55,11 +61,17 @@ async fn ws_handler(
         Err(AuthError::InvalidToken) => return StatusCode::UNAUTHORIZED.into_response(),
     };
 
-    ws.on_upgrade(move |socket| handle_socket(socket, state, key_info))
+    // 2. Attempt WebSocket upgrade (requires the OnUpgrade extension).
+    match WebSocketUpgrade::from_request_parts(&mut parts, &state).await {
+        Ok(ws) => ws
+            .on_upgrade(move |socket| handle_socket(socket, state, key_info))
+            .into_response(),
+        Err(rejection) => rejection.into_response(),
+    }
 }
 
-fn extract_bearer(headers: &HeaderMap) -> Option<String> {
-    let value = headers.get(header::AUTHORIZATION)?;
+fn extract_bearer(parts: &Parts) -> Option<String> {
+    let value = parts.headers.get(header::AUTHORIZATION)?;
     let s = value.to_str().ok()?;
     s.strip_prefix("Bearer ").map(str::to_string)
 }

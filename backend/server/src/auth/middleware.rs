@@ -60,7 +60,7 @@ pub async fn set_org_context(
     tx: &mut sqlx::Transaction<'_, Postgres>,
     org_id: Uuid,
 ) -> anyhow::Result<()> {
-    sqlx::query("SET LOCAL app.org_id = $1")
+    sqlx::query("SELECT set_config('app.org_id', $1, true)")
         .bind(org_id.to_string())
         .execute(&mut **tx)
         .await?;
