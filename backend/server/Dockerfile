@@ -8,6 +8,9 @@
 
 # ── Stage 1: Install cargo-chef ───────────────────────────────────────────
 FROM rust:1.93-slim AS chef
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends pkg-config libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
 RUN cargo install cargo-chef --locked
 WORKDIR /app
 

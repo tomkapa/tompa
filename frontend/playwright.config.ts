@@ -13,7 +13,6 @@ export default defineConfig({
 
   use: {
     baseURL,
-    storageState: 'e2e/.auth/user.json',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -22,11 +21,13 @@ export default defineConfig({
     {
       name: 'setup',
       testMatch: /global-setup\.ts/,
-      use: { storageState: undefined },
     },
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: 'e2e/.auth/user.json',
+      },
       dependencies: ['setup'],
     },
   ],
