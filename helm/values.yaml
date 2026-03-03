@@ -4,7 +4,7 @@
 server:
   image:
     repository: ghcr.io/tompaka/tompa
-    tag: latest
+    tag: c8610795786811aaa92b42dfb5ee46218090a1b6
     pullPolicy: IfNotPresent
   replicas: 1
   port: 3000
@@ -15,16 +15,14 @@ server:
     limits:
       cpu: 500m
       memory: 512Mi
-
 agent:
   # Agent containers are customer self-hosted — not deployed by this chart.
   # Tags here are updated by CI and referenced by container setup documentation.
   image:
     repository: ghcr.io/placeholder/agent
-    tag: latest
+    tag: c8610795786811aaa92b42dfb5ee46218090a1b6
     pullPolicy: IfNotPresent
   port: 3001
-
 ingress:
   enabled: true
   className: nginx
@@ -39,12 +37,10 @@ ingress:
   tls:
     enabled: true
     secretName: tompa-tls
-
 # Non-secret runtime configuration (mounted as env vars via ConfigMap)
 config:
   rustLog: "tompa=info,tower_http=debug,sqlx=warn"
   port: "3000"
-
 # External Secrets Operator — pulls secrets from OpenBao into a k8s Secret
 externalSecret:
   refreshInterval: "1h"
