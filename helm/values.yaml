@@ -4,7 +4,7 @@
 server:
   image:
     repository: ghcr.io/tompaka/tompa
-    tag: c8610795786811aaa92b42dfb5ee46218090a1b6
+    tag: 22ca22eb0089296d1b69342eadf5451c2510864b
     pullPolicy: IfNotPresent
   replicas: 1
   port: 3000
@@ -20,7 +20,7 @@ agent:
   # Tags here are updated by CI and referenced by container setup documentation.
   image:
     repository: ghcr.io/placeholder/agent
-    tag: c8610795786811aaa92b42dfb5ee46218090a1b6
+    tag: 22ca22eb0089296d1b69342eadf5451c2510864b
     pullPolicy: IfNotPresent
   port: 3001
 ingress:
