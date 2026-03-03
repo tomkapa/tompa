@@ -44,13 +44,14 @@ function Switch({
         disabled={disabled}
         onClick={handleClick}
         className={cn(
-          'relative inline-flex h-6 w-10 shrink-0 cursor-pointer items-center rounded-full p-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
-          isChecked ? 'bg-primary justify-end' : 'bg-input justify-start'
+          'relative inline-flex h-6 w-10 shrink-0 cursor-pointer items-center rounded-full p-1 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
+          isChecked ? 'bg-primary' : 'bg-input'
         )}
       >
         <span
           className={cn(
-            'block h-4 w-5 rounded-full bg-primary-foreground shadow-sm transition-all',
+            'block h-4 w-4 rounded-full bg-primary-foreground shadow-sm transition-transform duration-200 ease-[cubic-bezier(0.34,1.56,0.64,1)]',
+            isChecked ? 'translate-x-4' : 'translate-x-0'
           )}
         />
       </button>

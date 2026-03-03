@@ -20,6 +20,7 @@ pub struct StoryRow {
     pub pipeline_stage: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub owner_name: String,
 }
 
 #[derive(sqlx::FromRow)]
@@ -35,7 +36,8 @@ pub struct TaskSummaryRow {
 
 const STORY_COLUMNS: &str = r#"
     id, org_id, project_id, title, description, story_type,
-    status, owner_id, rank, pipeline_stage, created_at, updated_at
+    status, owner_id, rank, pipeline_stage, created_at, updated_at,
+    COALESCE((SELECT display_name FROM users WHERE users.id = owner_id), '') as owner_name
 "#;
 
 /// List non-deleted stories for a project, ordered by rank ascending.

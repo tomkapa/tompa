@@ -1,6 +1,6 @@
 import * as React from 'react'
-import { Bell, Search, Plus, Filter } from 'lucide-react'
-import { useParams, useNavigate } from '@tanstack/react-router'
+import { Bell, Search, Plus, Filter, Settings, CircleDot, Tag, ChevronDown, ChevronUp, X, Check } from 'lucide-react'
+import { useParams, useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import { Avatar } from '@/components/ui/avatar'
@@ -18,6 +18,7 @@ import type { Story } from '@/features/stories/stories-table'
 import {
   useListStories,
   useCreateStory,
+  useStartStory,
   useUpdateRank,
   getListStoriesQueryKey,
 } from '@/api/generated/stories/stories'
@@ -31,6 +32,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { useSSE } from '@/hooks/use-sse'
 import { useSSEStore } from '@/stores/sse-store'
 import { useToastStore } from '@/stores/toast-store'
+import { ProjectSettings } from '@/features/settings/project-settings'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -62,7 +64,7 @@ function mapStory(s: StoryResponse): Story {
     title: s.title,
     storyType: toStoryType(s.story_type),
     status: toStoryStatus(s.status),
-    ownerName: s.owner_id,
+    ownerName: s.owner_name || 'Unassigned',
     needsAttention: s.tasks.some((t) => t.state === 'paused'),
   }
 }
@@ -74,14 +76,21 @@ interface AppHeaderProps {
   onSearchChange: (value: string) => void
   hasNotification: boolean
   projectSelector: React.ReactNode
+  onSettingsClick: () => void
+  onBrandClick: () => void
+  isSettingsActive?: boolean
 }
 
-function AppHeader({ searchValue, onSearchChange, hasNotification, projectSelector }: AppHeaderProps) {
+function AppHeader({ searchValue, onSearchChange, hasNotification, projectSelector, onSettingsClick, onBrandClick, isSettingsActive }: AppHeaderProps) {
   return (
     <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-background px-4 md:px-6">
       {/* Left — brand + divider + project selector */}
       <div className="flex items-center gap-3 md:gap-4">
-        <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onBrandClick}
+          className="flex items-center gap-2 rounded-lg transition-opacity hover:opacity-80"
+        >
           <div
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px]"
             style={{
@@ -92,7 +101,7 @@ function AppHeader({ searchValue, onSearchChange, hasNotification, projectSelect
           <span className="hidden text-base font-semibold leading-none text-foreground md:inline">
             Tompa
           </span>
-        </div>
+        </button>
         <div className="hidden h-6 w-px bg-border md:block" />
         {projectSelector}
       </div>
@@ -139,6 +148,17 @@ function AppHeader({ searchValue, onSearchChange, hasNotification, projectSelect
             </span>
           )}
         </div>
+        <button
+          type="button"
+          aria-label="Settings"
+          onClick={onSettingsClick}
+          className={cn(
+            'flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-accent hover:text-foreground',
+            isSettingsActive ? 'bg-accent text-foreground' : 'text-muted-foreground'
+          )}
+        >
+          <Settings className="h-5 w-5" />
+        </button>
         <Avatar initials="JD" size="default" />
       </div>
     </header>
@@ -164,10 +184,29 @@ export function AppLayout() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { user } = useAuth()
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const isSettingsPage = pathname.endsWith('/settings')
 
   const [searchValue, setSearchValue] = React.useState('')
   const [createProjectOpen, setCreateProjectOpen] = React.useState(false)
   const [storyCreationOpen, setStoryCreationOpen] = React.useState(false)
+  const [openFilter, setOpenFilter] = React.useState<'status' | 'type' | null>(null)
+  const [filterStatus, setFilterStatus] = React.useState<Set<string>>(new Set())
+  const [filterType, setFilterType] = React.useState<Set<string>>(new Set())
+  const filterBarRef = React.useRef<HTMLDivElement>(null)
+
+  React.useEffect(() => {
+    if (!openFilter) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (filterBarRef.current && !filterBarRef.current.contains(e.target as Node)) {
+        setOpenFilter(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [openFilter])
+
+  const activeFilterCount = filterStatus.size + filterType.size
 
   // ── Derive project ID from slug ───────────────────────────────────────────
   const { data: projectsResp } = useListProjects(
@@ -210,12 +249,21 @@ export function AppLayout() {
     return apiStories.map(mapStory)
   }, [storiesResp])
 
-  // ── Filter by search ───────────────────────────────────────────────────────
+  // ── Filter by search + status + type ─────────────────────────────────────
   const filteredStories = React.useMemo(() => {
-    if (!searchValue.trim()) return stories
-    const q = searchValue.toLowerCase()
-    return stories.filter((s) => s.title.toLowerCase().includes(q))
-  }, [stories, searchValue])
+    let result = stories
+    if (searchValue.trim()) {
+      const q = searchValue.toLowerCase()
+      result = result.filter((s) => s.title.toLowerCase().includes(q))
+    }
+    if (filterStatus.size > 0) {
+      result = result.filter((s) => filterStatus.has(s.status))
+    }
+    if (filterType.size > 0) {
+      result = result.filter((s) => filterType.has(s.storyType))
+    }
+    return result
+  }, [stories, searchValue, filterStatus, filterType])
 
   // ── Project mutations ─────────────────────────────────────────────────────
   const createProjectMutation = useCreateProject({
@@ -269,7 +317,34 @@ export function AppLayout() {
     },
   })
 
+  const startStoryMutation = useStartStory({
+    mutation: {
+      onSuccess: () => {
+        void queryClient.invalidateQueries({
+          queryKey: getListStoriesQueryKey({ project_id: projectId }),
+        })
+      },
+      onError: () => {
+        useToastStore.getState().addToast({ variant: 'error', title: 'Failed to start story' })
+      },
+    },
+  })
+
   // ── Callbacks ──────────────────────────────────────────────────────────────
+  function handleSettingsClick() {
+    void navigate({
+      to: '/projects/$projectSlug/settings',
+      params: { projectSlug },
+    })
+  }
+
+  function handleBrandClick() {
+    void navigate({
+      to: '/projects/$projectSlug',
+      params: { projectSlug },
+    })
+  }
+
   function handleProjectSelect(selectedProjectId: string) {
     const selected = projects.find((p) => p.id === selectedProjectId)
     if (!selected) return
@@ -313,6 +388,10 @@ export function AppLayout() {
     setStoryCreationOpen(false)
   }
 
+  function handleStartStory(storyId: string) {
+    startStoryMutation.mutate({ id: storyId })
+  }
+
   function handleReorder(reorderedStoryId: string, beforeId?: string, afterId?: string) {
     // beforeId = item above the target in the new order (target goes AFTER it)
     // afterId  = item below the target in the new order (target goes BEFORE it)
@@ -333,6 +412,9 @@ export function AppLayout() {
         searchValue={searchValue}
         onSearchChange={setSearchValue}
         hasNotification={hasNotification}
+        onSettingsClick={handleSettingsClick}
+        onBrandClick={handleBrandClick}
+        isSettingsActive={isSettingsPage}
         projectSelector={
           <ProjectSelector
             projects={projects}
@@ -345,37 +427,216 @@ export function AppLayout() {
 
       {/* Main content */}
       <main className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden bg-accent p-4 md:gap-6 md:p-8">
-        {/* Page header */}
-        <div className="flex shrink-0 items-center justify-between">
-          <h1 className="text-xl font-semibold leading-none text-foreground md:text-2xl">Stories</h1>
-          <div className="flex items-center gap-2 md:gap-3">
-            <Button
-              variant="outline"
-              leadingIcon={<Filter className="h-4 w-4" />}
-              className="hidden sm:flex"
-            >
-              Filter
-            </Button>
-            <Button
-              leadingIcon={<Plus className="h-4 w-4" />}
-              onClick={handleNewStory}
-              disabled={createStoryMutation.isPending}
-            >
-              New Story
-            </Button>
-          </div>
-        </div>
+        {isSettingsPage ? (
+          <ProjectSettings projectId={projectId} activeProject={activeProject} projectSlug={projectSlug} />
+        ) : (
+          <>
+            {/* Page header */}
+            <div className="flex shrink-0 items-center justify-between">
+              <h1 className="text-xl font-semibold leading-none text-foreground md:text-2xl">Stories</h1>
+              <div className="flex items-center gap-2 md:gap-3">
+                <Button
+                  variant="outline"
+                  leadingIcon={<Filter className="h-4 w-4" />}
+                  className={cn('hidden sm:flex', activeFilterCount > 0 && 'border-primary text-foreground')}
+                  onClick={() => setOpenFilter(openFilter ? null : 'status')}
+                >
+                  Filter
+                  {activeFilterCount > 0 && (
+                    <span className="ml-1 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-primary px-1 text-[11px] font-semibold text-primary-foreground">
+                      {activeFilterCount}
+                    </span>
+                  )}
+                </Button>
+                <Button
+                  leadingIcon={<Plus className="h-4 w-4" />}
+                  onClick={handleNewStory}
+                  disabled={createStoryMutation.isPending}
+                >
+                  New Story
+                </Button>
+              </div>
+            </div>
 
-        {/* Stories table */}
-        <StoriesTable
-          stories={filteredStories}
-          onStoryClick={handleStoryClick}
-          onNewStory={handleNewStory}
-          onReorder={handleReorder}
-          isLoading={storiesLoading}
-          searchQuery={searchValue}
-          className="min-h-0 flex-1"
-        />
+            {/* Filter bar — visible when filters are active or a dropdown is open */}
+            {(activeFilterCount > 0 || openFilter) && (
+              <div className="flex shrink-0 items-center gap-3" ref={filterBarRef}>
+                {/* Status filter pill */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setOpenFilter(openFilter === 'status' ? null : 'status')}
+                    className={cn(
+                      'flex items-center gap-2 rounded-full border px-3 py-1.5 text-[13px] font-medium transition-colors',
+                      filterStatus.size > 0
+                        ? 'border-primary bg-background text-foreground'
+                        : 'border-border bg-background text-foreground hover:bg-accent'
+                    )}
+                  >
+                    <CircleDot className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span>Status</span>
+                    {filterStatus.size > 0 && (
+                      <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-primary px-1 text-[11px] font-semibold text-primary-foreground">
+                        {filterStatus.size}
+                      </span>
+                    )}
+                    {openFilter === 'status' ? (
+                      <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
+                    ) : (
+                      <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                    )}
+                  </button>
+
+                  {openFilter === 'status' && (
+                    <div className="absolute left-0 top-full z-50 mt-2 w-[220px] rounded-2xl border border-border bg-popover p-1.5 shadow-lg animate-in fade-in-0 zoom-in-95">
+                      {(['in_progress', 'todo', 'done'] as const).map((s) => (
+                        <label
+                          key={s}
+                          className={cn(
+                            'flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors hover:bg-accent',
+                            filterStatus.has(s) && 'bg-accent'
+                          )}
+                        >
+                          <input
+                            type="checkbox"
+                            className="sr-only peer"
+                            checked={filterStatus.has(s)}
+                            onChange={() => setFilterStatus((prev) => {
+                              const next = new Set(prev)
+                              if (next.has(s)) next.delete(s); else next.add(s)
+                              return next
+                            })}
+                          />
+                          <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[6px] border border-input bg-background peer-checked:border-primary peer-checked:bg-primary">
+                            <Check className="h-3 w-3 text-primary-foreground opacity-0 peer-checked:opacity-100" />
+                          </div>
+                          <span className={cn(
+                            'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
+                            s === 'in_progress' && 'bg-[var(--color-info)] text-[var(--color-info-foreground)]',
+                            s === 'todo' && 'bg-secondary text-secondary-foreground',
+                            s === 'done' && 'bg-[var(--color-success)] text-[var(--color-success-foreground)]',
+                          )}>
+                            {s === 'in_progress' ? 'In Progress' : s === 'todo' ? 'To Do' : 'Done'}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Type filter pill */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setOpenFilter(openFilter === 'type' ? null : 'type')}
+                    className={cn(
+                      'flex items-center gap-2 rounded-full border px-3 py-1.5 text-[13px] font-medium transition-colors',
+                      filterType.size > 0
+                        ? 'border-primary bg-background text-foreground'
+                        : 'border-border bg-background text-foreground hover:bg-accent'
+                    )}
+                  >
+                    <Tag className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span>Type</span>
+                    {filterType.size > 0 && (
+                      <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-primary px-1 text-[11px] font-semibold text-primary-foreground">
+                        {filterType.size}
+                      </span>
+                    )}
+                    {openFilter === 'type' ? (
+                      <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
+                    ) : (
+                      <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                    )}
+                  </button>
+
+                  {openFilter === 'type' && (
+                    <div className="absolute left-0 top-full z-50 mt-2 w-[220px] rounded-2xl border border-border bg-popover p-1.5 shadow-lg animate-in fade-in-0 zoom-in-95">
+                      {(['feature', 'bug', 'refactor'] as const).map((t) => (
+                        <label
+                          key={t}
+                          className={cn(
+                            'flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors hover:bg-accent',
+                            filterType.has(t) && 'bg-accent'
+                          )}
+                        >
+                          <input
+                            type="checkbox"
+                            className="sr-only peer"
+                            checked={filterType.has(t)}
+                            onChange={() => setFilterType((prev) => {
+                              const next = new Set(prev)
+                              if (next.has(t)) next.delete(t); else next.add(t)
+                              return next
+                            })}
+                          />
+                          <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[6px] border border-input bg-background peer-checked:border-primary peer-checked:bg-primary">
+                            <Check className="h-3 w-3 text-primary-foreground opacity-0 peer-checked:opacity-100" />
+                          </div>
+                          <span className="capitalize text-sm">{t}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Divider + active filter chips */}
+                {activeFilterCount > 0 && (
+                  <>
+                    <div className="h-5 w-px bg-border" />
+                    {Array.from(filterStatus).map((s) => (
+                      <button
+                        key={`status-${s}`}
+                        type="button"
+                        onClick={() => setFilterStatus((prev) => { const next = new Set(prev); next.delete(s); return next })}
+                        className={cn(
+                          'flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium',
+                          s === 'in_progress' && 'bg-[var(--color-info)] text-[var(--color-info-foreground)]',
+                          s === 'todo' && 'bg-secondary text-secondary-foreground',
+                          s === 'done' && 'bg-[var(--color-success)] text-[var(--color-success-foreground)]',
+                        )}
+                      >
+                        {s === 'in_progress' ? 'In Progress' : s === 'todo' ? 'To Do' : 'Done'}
+                        <X className="h-3 w-3" />
+                      </button>
+                    ))}
+                    {Array.from(filterType).map((t) => (
+                      <button
+                        key={`type-${t}`}
+                        type="button"
+                        onClick={() => setFilterType((prev) => { const next = new Set(prev); next.delete(t); return next })}
+                        className="flex items-center gap-1.5 rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground"
+                      >
+                        <span className="capitalize">{t}</span>
+                        <X className="h-3 w-3" />
+                      </button>
+                    ))}
+                    <div className="flex-1" />
+                    <button
+                      type="button"
+                      className="text-[13px] text-muted-foreground hover:text-foreground"
+                      onClick={() => { setFilterStatus(new Set()); setFilterType(new Set()) }}
+                    >
+                      Clear all
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Stories table */}
+            <StoriesTable
+              stories={filteredStories}
+              onStoryClick={handleStoryClick}
+              onStartStory={handleStartStory}
+              onNewStory={handleNewStory}
+              onReorder={handleReorder}
+              isLoading={storiesLoading}
+              searchQuery={searchValue}
+              className="min-h-0 flex-1"
+            />
+          </>
+        )}
       </main>
 
       {/* Story / Task Detail Modal overlay */}

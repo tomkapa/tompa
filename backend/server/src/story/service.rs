@@ -23,6 +23,7 @@ fn to_response(row: StoryRow, tasks: Vec<TaskSummaryRow>) -> StoryResponse {
         story_type: row.story_type,
         status: row.status,
         owner_id: row.owner_id,
+        owner_name: row.owner_name,
         rank: row.rank,
         pipeline_stage: row.pipeline_stage,
         created_at: row.created_at,

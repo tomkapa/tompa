@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useExitAnimation } from '@/hooks/use-exit-animation'
 
 // Halo Dialog/Modal — Left/Center/Icon variants
 // Backdrop, rounded-[24px] (radius-m), bg-card, shadow
@@ -8,11 +9,15 @@ import { cn } from '@/lib/utils'
 interface DialogContextValue {
   open: boolean
   onOpenChange: (open: boolean) => void
+  visible: boolean
+  dataState: 'open' | 'closed'
 }
 
 const DialogContext = React.createContext<DialogContextValue>({
   open: false,
   onOpenChange: () => {},
+  visible: false,
+  dataState: 'closed',
 })
 
 interface DialogProps {
@@ -27,13 +32,15 @@ function Dialog({ open, defaultOpen = false, onOpenChange, children }: DialogPro
   const controlled = open !== undefined
   const isOpen = controlled ? open : internalOpen
 
+  const { visible, dataState } = useExitAnimation(isOpen, 150)
+
   const handleOpenChange = (next: boolean) => {
     if (!controlled) setInternalOpen(next)
     onOpenChange?.(next)
   }
 
   return (
-    <DialogContext.Provider value={{ open: isOpen, onOpenChange: handleOpenChange }}>
+    <DialogContext.Provider value={{ open: isOpen, onOpenChange: handleOpenChange, visible, dataState }}>
       {children}
     </DialogContext.Provider>
   )
@@ -57,17 +64,20 @@ function DialogTrigger({ asChild, children, ...props }: React.HTMLAttributes<HTM
 }
 
 function DialogPortal({ children }: { children: React.ReactNode }) {
-  const { open } = React.useContext(DialogContext)
-  if (!open) return null
+  const { visible } = React.useContext(DialogContext)
+  if (!visible) return null
   return <>{children}</>
 }
 
 function DialogOverlay({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  const { onOpenChange } = React.useContext(DialogContext)
+  const { onOpenChange, dataState } = React.useContext(DialogContext)
   return (
     <div
+      data-state={dataState}
       className={cn(
-        'fixed inset-0 z-50 bg-black/50 backdrop-blur-sm animate-in fade-in-0',
+        'fixed inset-0 z-50 bg-black/50 backdrop-blur-sm',
+        'animate-in fade-in-0',
+        'data-[state=closed]:animate-out data-[state=closed]:fade-out-0',
         className
       )}
       onClick={() => onOpenChange(false)}
@@ -82,7 +92,7 @@ interface DialogContentProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 function DialogContent({ className, position = 'center', children, onClose, ...props }: DialogContentProps) {
-  const { onOpenChange } = React.useContext(DialogContext)
+  const { onOpenChange, dataState } = React.useContext(DialogContext)
 
   const handleClose = () => {
     onOpenChange(false)
@@ -100,8 +110,11 @@ function DialogContent({ className, position = 'center', children, onClose, ...p
       <div
         role="dialog"
         aria-modal
+        data-state={dataState}
         className={cn(
-          'bg-card border border-border shadow-xl p-10 animate-in fade-in-0 zoom-in-95',
+          'bg-card border border-border shadow-xl p-10',
+          'animate-in fade-in-0 zoom-in-95',
+          'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
           positionClass,
           className
         )}

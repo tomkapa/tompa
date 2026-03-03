@@ -7,6 +7,7 @@ const SEED_FILE = path.join(__dirname, '.auth', 'seed.json')
 
 interface SeedData {
   projectSlug: string
+  featureStoryId: string
 }
 
 export function getSeedData(): SeedData {

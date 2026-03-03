@@ -68,6 +68,12 @@ const storiesTableRoute = createRoute({
   component: () => null,
 })
 
+const settingsRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: '/settings',
+  component: () => null,
+})
+
 const storyModalRoute = createRoute({
   getParentRoute: () => projectRoute,
   path: '/stories/$storyId',
@@ -85,6 +91,7 @@ const routeTree = rootRoute.addChildren([
   loginRoute,
   projectRoute.addChildren([
     storiesTableRoute,
+    settingsRoute,
     storyModalRoute.addChildren([taskDetailRoute]),
   ]),
 ])

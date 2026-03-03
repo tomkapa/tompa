@@ -25,7 +25,7 @@ const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
           {/* Unchecked state */}
           <div
             className={cn(
-              'h-4 w-4 rounded-[6px] border border-input bg-background transition-colors',
+              'h-4 w-4 rounded-[6px] border border-input bg-background transition-all duration-150',
               'peer-checked:bg-primary peer-checked:border-primary',
               'peer-focus-visible:ring-2 peer-focus-visible:ring-ring',
               'peer-disabled:cursor-not-allowed peer-disabled:opacity-50',
@@ -33,7 +33,7 @@ const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
             )}
           />
           {/* Check icon */}
-          <Check className="pointer-events-none absolute size-3 text-primary-foreground opacity-0 peer-checked:opacity-100 transition-opacity" />
+          <Check className="pointer-events-none absolute size-3 text-primary-foreground scale-0 peer-checked:animate-checkmark-pop peer-checked:scale-100 transition-transform" />
         </div>
         {(label || description) && (
           <div className="flex flex-col gap-1">

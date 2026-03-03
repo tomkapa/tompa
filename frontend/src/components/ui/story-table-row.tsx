@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { GripVertical } from 'lucide-react'
+import { GripVertical, Play } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { StatusBadge } from './status-badge'
 import { AttentionDot } from './attention-dot'
@@ -19,10 +19,11 @@ export interface StoryRowData {
 export interface StoryTableRowProps {
   story: StoryRowData
   onClick: () => void
+  onStart?: () => void
   dragHandleProps?: React.HTMLAttributes<HTMLDivElement>
 }
 
-export function StoryTableRow({ story, onClick, dragHandleProps }: StoryTableRowProps) {
+export function StoryTableRow({ story, onClick, onStart, dragHandleProps }: StoryTableRowProps) {
   const isDone = story.status === 'done'
 
   return (
@@ -58,6 +59,23 @@ export function StoryTableRow({ story, onClick, dragHandleProps }: StoryTableRow
       {/* Owner Column */}
       <div className="hidden sm:flex h-full w-[140px] shrink-0 items-center px-3">
         <span className="text-sm text-muted-foreground truncate">{story.ownerName}</span>
+      </div>
+
+      {/* Actions Column */}
+      <div className="flex h-full w-[120px] shrink-0 items-center justify-center px-3">
+        {story.status === 'todo' && onStart && (
+          <button
+            type="button"
+            aria-label="Start story"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary/90"
+            onClick={(e) => {
+              e.stopPropagation()
+              onStart()
+            }}
+          >
+            <Play className="h-5 w-5" />
+          </button>
+        )}
       </div>
     </div>
   )

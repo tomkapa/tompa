@@ -83,6 +83,7 @@ pub struct StoryResponse {
     pub story_type: String,
     pub status: String,
     pub owner_id: Uuid,
+    pub owner_name: String,
     pub rank: String,
     pub pipeline_stage: Option<String>,
     pub created_at: DateTime<Utc>,

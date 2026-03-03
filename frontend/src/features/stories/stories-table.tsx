@@ -1,12 +1,13 @@
-import { Plus } from 'lucide-react'
 import {
   DndContext,
+  DragOverlay,
   closestCenter,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from '@dnd-kit/core'
 import {
   SortableContext,
@@ -16,8 +17,8 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { useState } from 'react'
 import { cn } from '@/lib/utils'
-import { Button } from '@/components/ui/button'
 import { StoryTableRow, type StoryRowData } from '@/components/ui/story-table-row'
 
 export type Story = StoryRowData
@@ -25,9 +26,10 @@ export type Story = StoryRowData
 interface SortableRowProps {
   story: Story
   onStoryClick: () => void
+  onStartStory?: () => void
 }
 
-function SortableRow({ story, onStoryClick }: SortableRowProps) {
+function SortableRow({ story, onStoryClick, onStartStory }: SortableRowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: story.id,
   })
@@ -38,14 +40,18 @@ function SortableRow({ story, onStoryClick }: SortableRowProps) {
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
-        opacity: isDragging ? 0.4 : 1,
         position: 'relative',
         zIndex: isDragging ? 10 : undefined,
       }}
+      className={cn(
+        'transition-transform duration-200',
+        isDragging && 'opacity-40'
+      )}
     >
       <StoryTableRow
         story={story}
         onClick={onStoryClick}
+        onStart={onStartStory}
         dragHandleProps={{ ...attributes, ...listeners }}
       />
     </div>
@@ -67,6 +73,7 @@ function SkeletonRow() {
       <div className="hidden sm:block w-[140px] shrink-0 px-3">
         <div className="h-4 w-20 rounded bg-muted animate-pulse" />
       </div>
+      <div className="w-[120px] shrink-0" />
     </div>
   )
 }
@@ -74,6 +81,7 @@ function SkeletonRow() {
 export interface StoriesTableProps {
   stories: Story[]
   onStoryClick: (storyId: string) => void
+  onStartStory: (storyId: string) => void
   onNewStory: () => void
   onReorder: (storyId: string, beforeId?: string, afterId?: string) => void
   isLoading?: boolean
@@ -84,18 +92,26 @@ export interface StoriesTableProps {
 export function StoriesTable({
   stories,
   onStoryClick,
-  onNewStory,
+  onStartStory,
   onReorder,
   isLoading,
   searchQuery,
   className,
 }: StoriesTableProps) {
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const activeStory = activeId ? stories.find((s) => s.id === activeId) : null
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
+  function handleDragStart(event: DragStartEvent) {
+    setActiveId(String(event.active.id))
+  }
+
   function handleDragEnd(event: DragEndEvent) {
+    setActiveId(null)
     const { active, over } = event
     if (!over || active.id === over.id) return
 
@@ -115,18 +131,6 @@ export function StoriesTable({
         className
       )}
     >
-      {/* Action bar */}
-      <div className="flex items-center justify-between border-b border-border px-4 py-3">
-        <div />
-        <Button
-          size="default"
-          onClick={onNewStory}
-          leadingIcon={<Plus className="h-4 w-4" />}
-        >
-          New
-        </Button>
-      </div>
-
       {/* Column headers */}
       <div className="flex items-center h-11 border-b border-border bg-muted">
         <div className="w-10 shrink-0" />
@@ -138,6 +142,9 @@ export function StoriesTable({
         </div>
         <div className="hidden sm:block w-[140px] shrink-0 px-3 text-xs font-medium text-muted-foreground uppercase tracking-wide">
           Owner
+        </div>
+        <div className="w-[120px] shrink-0 px-3 text-xs font-medium text-muted-foreground uppercase tracking-wide text-center">
+          Actions
         </div>
       </div>
 
@@ -155,6 +162,7 @@ export function StoriesTable({
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
+          onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
           <SortableContext
@@ -166,9 +174,19 @@ export function StoriesTable({
                 key={story.id}
                 story={story}
                 onStoryClick={() => onStoryClick(story.id)}
+                onStartStory={() => onStartStory(story.id)}
               />
             ))}
           </SortableContext>
+          <DragOverlay
+            dropAnimation={{ duration: 200, easing: 'ease-out' }}
+          >
+            {activeStory && (
+              <div className="scale-[1.02] rounded-lg shadow-lg opacity-90 bg-background">
+                <StoryTableRow story={activeStory} onClick={() => {}} />
+              </div>
+            )}
+          </DragOverlay>
         </DndContext>
       )}
 

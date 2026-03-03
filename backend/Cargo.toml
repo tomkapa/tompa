@@ -53,9 +53,6 @@ utoipa = { version = "5", features = ["uuid", "chrono"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
-# Config
-toml = "1"
-
 # Git
 gix = { version = "0.80", default-features = false, features = ["revision"] }
 

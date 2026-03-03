@@ -14,9 +14,9 @@ function AnswerOptionCard({ text, selected, disabled, onSelect }: AnswerOptionCa
       onClick={onSelect}
       disabled={disabled}
       className={cn(
-        'flex w-full items-center gap-3 rounded-[6px] border px-4 py-[14px] text-left transition-colors',
+        'flex w-full items-center gap-3 rounded-[6px] border px-4 py-[14px] text-left transition-all duration-150 active:scale-[0.98] motion-reduce:transform-none',
         selected
-          ? 'border-primary bg-primary text-primary-foreground'
+          ? 'border-primary bg-primary text-primary-foreground shadow-md shadow-primary/20'
           : 'border-border bg-background text-foreground hover:bg-accent',
         disabled && !selected && 'pointer-events-none opacity-50',
         disabled && selected && 'pointer-events-none'

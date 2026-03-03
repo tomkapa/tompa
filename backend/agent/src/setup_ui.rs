@@ -22,7 +22,6 @@ pub enum SetupUiMessage {}
 
 pub struct SetupUi {
     port: u16,
-    config_path: String,
     mode: String,
     _dispatch_tx: mpsc::Sender<DispatchMessage>,
     rx: mpsc::Receiver<SetupUiMessage>,
@@ -32,7 +31,6 @@ pub struct SetupUi {
 impl SetupUi {
     pub fn new(
         port: u16,
-        config_path: String,
         mode: String,
         dispatch_tx: mpsc::Sender<DispatchMessage>,
         rx: mpsc::Receiver<SetupUiMessage>,
@@ -40,7 +38,6 @@ impl SetupUi {
     ) -> Self {
         Self {
             port,
-            config_path,
             mode,
             _dispatch_tx: dispatch_tx,
             rx,
@@ -53,7 +50,6 @@ impl SetupUi {
 
         let state = ApiState {
             status_rx: self.status_rx,
-            config_path: self.config_path,
             mode: self.mode,
         };
 
@@ -90,7 +86,6 @@ impl SetupUi {
 #[derive(Clone)]
 struct ApiState {
     status_rx: watch::Receiver<ConnectionStatus>,
-    config_path: String,
     mode: String,
 }
 
@@ -114,40 +109,27 @@ async fn get_status(State(state): State<ApiState>) -> Json<StatusResponse> {
 
 // ── POST /api/config ──────────────────────────────────────────────────────────
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize)]
 struct ConfigPayload {
+    #[allow(dead_code)]
     mode: String,
+    #[allow(dead_code)]
     server_url: String,
+    #[allow(dead_code)]
     api_key: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    #[allow(dead_code)]
     github_repo_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    #[allow(dead_code)]
     github_access_token: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    #[allow(dead_code)]
     setup_ui_port: Option<u16>,
 }
 
-async fn post_config(
-    State(state): State<ApiState>,
-    Json(payload): Json<ConfigPayload>,
-) -> StatusCode {
-    let toml_str = match toml::to_string_pretty(&payload) {
-        Ok(s) => s,
-        Err(e) => {
-            error!("Failed to serialize config to TOML: {e}");
-            return StatusCode::INTERNAL_SERVER_ERROR;
-        }
-    };
-    match std::fs::write(&state.config_path, toml_str) {
-        Ok(()) => {
-            info!(path = %state.config_path, "Config written");
-            StatusCode::OK
-        }
-        Err(e) => {
-            error!(path = %state.config_path, "Failed to write config: {e}");
-            StatusCode::INTERNAL_SERVER_ERROR
-        }
-    }
+async fn post_config(Json(_payload): Json<ConfigPayload>) -> StatusCode {
+    StatusCode::NOT_IMPLEMENTED
 }
 
 // ── Static asset serving (SPA fallback) ──────────────────────────────────────

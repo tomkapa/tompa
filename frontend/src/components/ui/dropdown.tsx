@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { Check, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useExitAnimation } from '@/hooks/use-exit-animation'
 
 // Halo Dropdown — matches Dropdown, List Item/Checked, List Item/Unchecked, List Divider, List Title
 // Container: bg-popover, rounded-[24px] (radius-m), shadow, border, p-2
@@ -84,7 +85,9 @@ function DropdownMenuContent({
   ...props
 }: React.HTMLAttributes<HTMLDivElement> & { align?: 'start' | 'end' | 'center' }) {
   const { open } = React.useContext(DropdownContext)
-  if (!open) return null
+  const { visible, dataState } = useExitAnimation(open, 150)
+
+  if (!visible) return null
 
   const alignClass = {
     start: 'left-0',
@@ -94,8 +97,11 @@ function DropdownMenuContent({
 
   return (
     <div
+      data-state={dataState}
       className={cn(
-        'absolute top-full z-50 mt-2 min-w-60 rounded-[24px] border border-border bg-popover p-2 shadow-lg animate-in fade-in-0 zoom-in-95',
+        'absolute top-full z-50 mt-2 min-w-60 rounded-[24px] border border-border bg-popover p-2 shadow-lg',
+        'animate-in fade-in-0 zoom-in-95 slide-in-from-top-2',
+        'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:slide-out-to-top-2',
         alignClass,
         className
       )}
@@ -128,8 +134,9 @@ function DropdownMenuItem({
     <div
       role="menuitem"
       className={cn(
-        'flex cursor-pointer items-center justify-between rounded-full gap-2 px-4 py-2.5 text-sm text-foreground transition-colors select-none',
+        'flex cursor-pointer items-center justify-between rounded-full gap-2 px-4 py-2.5 text-sm text-foreground transition-all duration-100 select-none',
         'hover:bg-accent hover:text-accent-foreground',
+        'active:scale-[0.98] motion-reduce:transform-none',
         disabled && 'pointer-events-none opacity-50',
         className
       )}

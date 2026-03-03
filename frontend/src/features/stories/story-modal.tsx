@@ -3,6 +3,7 @@ import { X, Loader2 } from 'lucide-react'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
+import { useExitAnimation } from '@/hooks/use-exit-animation'
 import { AppBreadcrumb } from '@/components/ui/app-breadcrumb'
 import { TabSwitcher } from '@/components/ui/tab-switcher'
 import { ConfirmationDialog } from '@/components/ui/confirmation-dialog'
@@ -97,9 +98,10 @@ interface ModalShellProps {
   onCloseAttempt: () => void
   children: React.ReactNode
   className?: string
+  dataState?: 'open' | 'closed'
 }
 
-function ModalShell({ breadcrumb, onCloseAttempt, children, className }: ModalShellProps) {
+function ModalShell({ breadcrumb, onCloseAttempt, children, className, dataState = 'open' }: ModalShellProps) {
   // Close on Escape key
   React.useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -111,15 +113,19 @@ function ModalShell({ breadcrumb, onCloseAttempt, children, className }: ModalSh
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+      data-state={dataState}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 animate-in fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0"
       aria-modal
       role="dialog"
     >
       <div
+        data-state={dataState}
         className={cn(
           'flex flex-col overflow-hidden bg-card',
           'h-full w-full',
           'md:h-[min(720px,90vh)] md:w-[min(1152px,92vw)] md:rounded-2xl md:shadow-[0_16px_48px_rgba(0,0,0,0.2)]',
+          'animate-in fade-in-0 zoom-in-[0.98]',
+          'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-[0.98]',
           className
         )}
         onClick={(e) => e.stopPropagation()}
@@ -419,6 +425,8 @@ export function StoryModal() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
+  const [modalOpen, setModalOpen] = React.useState(true)
+  const { visible: modalVisible, dataState: modalDataState } = useExitAnimation(modalOpen, 150)
   const [confirmOpen, setConfirmOpen] = React.useState(false)
 
   // ── Fetch story ────────────────────────────────────────────────────────────
@@ -517,17 +525,24 @@ export function StoryModal() {
   }
 
   // ── Close logic ────────────────────────────────────────────────────────────
+  const navigateToProject = React.useCallback(() => {
+    setModalOpen(false)
+    setTimeout(() => {
+      void navigate({ to: '/projects/$projectSlug', params: { projectSlug } })
+    }, 150)
+  }, [navigate, projectSlug])
+
   function handleCloseAttempt() {
     if (hasPendingQuestions(apiRounds)) {
       setConfirmOpen(true)
     } else {
-      void navigate({ to: '/projects/$projectSlug', params: { projectSlug } })
+      navigateToProject()
     }
   }
 
   function handleLeave() {
     setConfirmOpen(false)
-    void navigate({ to: '/projects/$projectSlug', params: { projectSlug } })
+    navigateToProject()
   }
 
   // ── Task click (navigate from story → task) ────────────────────────────────
@@ -560,13 +575,14 @@ export function StoryModal() {
       ]
 
   // ── Render ─────────────────────────────────────────────────────────────────
-  if (!storyId) return null
+  if (!storyId || !modalVisible) return null
 
   return (
     <>
       <ModalShell
         breadcrumb={<AppBreadcrumb segments={breadcrumbSegments} />}
         onCloseAttempt={handleCloseAttempt}
+        dataState={modalDataState}
       >
         {isTaskView ? (
           <TaskViewContent

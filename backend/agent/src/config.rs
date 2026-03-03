@@ -1,23 +1,41 @@
-use anyhow::{Context, Result};
-use serde::Deserialize;
+use std::env;
+
 use shared::enums::ContainerMode;
 
-#[derive(Deserialize, Debug, Clone)]
 pub struct Config {
     pub mode: ContainerMode,
     pub server_url: String,
     pub api_key: String,
     pub github_repo_url: Option<String>,
     pub github_access_token: Option<String>,
-    pub setup_ui_port: Option<u16>,
+    pub setup_ui_port: u16,
+    pub claude_cmd: String,
 }
 
 impl Config {
-    pub fn load() -> Result<Self> {
-        let path = std::env::var("CONFIG_PATH").unwrap_or_else(|_| "config.toml".to_string());
-        let content = std::fs::read_to_string(&path)
-            .with_context(|| format!("Config file not found or unreadable: {path}"))?;
-        let config: Config = toml::from_str(&content).context("Failed to parse config.toml")?;
-        Ok(config)
+    pub fn from_env() -> Self {
+        let mode = match require_var("AGENT_MODE").to_lowercase().as_str() {
+            "project" => ContainerMode::Project,
+            "dev" => ContainerMode::Dev,
+            "standalone" => ContainerMode::Standalone,
+            other => panic!("Invalid AGENT_MODE: {other} (expected project|dev|standalone)"),
+        };
+
+        Self {
+            mode,
+            server_url: require_var("AGENT_SERVER_URL"),
+            api_key: require_var("AGENT_API_KEY"),
+            github_repo_url: env::var("AGENT_GITHUB_REPO_URL").ok(),
+            github_access_token: env::var("AGENT_GITHUB_ACCESS_TOKEN").ok(),
+            setup_ui_port: env::var("AGENT_SETUP_UI_PORT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(3001),
+            claude_cmd: env::var("CLAUDE_CMD").unwrap_or_else(|_| "claude".into()),
+        }
     }
+}
+
+fn require_var(name: &str) -> String {
+    env::var(name).unwrap_or_else(|_| panic!("Missing required environment variable: {name}"))
 }

@@ -214,6 +214,7 @@ export interface StoryResponse {
   id: string;
   org_id: string;
   owner_id: string;
+  owner_name: string;
   /** @nullable */
   pipeline_stage?: string | null;
   project_id: string;

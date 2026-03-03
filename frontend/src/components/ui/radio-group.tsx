@@ -68,16 +68,19 @@ function RadioItem({ value, label, description, disabled, className }: RadioItem
         {/* Radio circle */}
         <div
           className={cn(
-            'h-4 w-4 rounded-full border transition-colors',
+            'h-4 w-4 rounded-full border transition-all duration-150',
             checked ? 'bg-primary border-primary' : 'bg-background border-input',
             'peer-focus-visible:ring-2 peer-focus-visible:ring-ring',
             'peer-disabled:cursor-not-allowed peer-disabled:opacity-50'
           )}
         />
-        {/* Inner dot */}
-        {checked && (
-          <div className="pointer-events-none absolute h-1 w-1 rounded-full bg-primary-foreground" />
-        )}
+        {/* Inner dot — always rendered, animated via scale */}
+        <div
+          className={cn(
+            'pointer-events-none absolute h-1 w-1 rounded-full bg-primary-foreground transition-transform',
+            checked ? 'scale-100 animate-radio-pop' : 'scale-0'
+          )}
+        />
       </div>
       {(label || description) && (
         <div className="flex flex-col gap-1">

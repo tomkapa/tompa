@@ -33,14 +33,9 @@ fn init_test_tracing() {
 async fn main() -> Result<()> {
     shared::telemetry::init_tracing("agent");
 
-    let config = Config::load().map_err(|e| {
-        tracing::error!("Failed to load config: {e}");
-        e
-    })?;
+    let config = Config::from_env();
 
     info!(mode = ?config.mode, "Agent starting");
-
-    let config_path = std::env::var("CONFIG_PATH").unwrap_or_else(|_| "config.toml".to_string());
 
     let (dispatch_tx, dispatch_rx) = mpsc::channel::<DispatchMessage>(256);
 
@@ -59,7 +54,7 @@ async fn main() -> Result<()> {
 
     // Claude Code actor — present in all modes (handles both Q&A and implementation)
     let (claude_tx, claude_rx) = mpsc::channel(64);
-    let claude_actor = ClaudeCode::new(dispatch_tx.clone(), claude_rx);
+    let claude_actor = ClaudeCode::new(config.claude_cmd.clone(), dispatch_tx.clone(), claude_rx);
 
     // Git manager — Dev and Standalone only
     let (git_tx, git_actor) = match config.mode {
@@ -79,7 +74,6 @@ async fn main() -> Result<()> {
     // Setup UI — Project and Standalone only
     let (ui_tx, ui_actor) = match config.mode {
         ContainerMode::Project | ContainerMode::Standalone => {
-            let port = config.setup_ui_port.unwrap_or(3001);
             let mode_str = match config.mode {
                 ContainerMode::Project => "project",
                 ContainerMode::Dev => "dev",
@@ -88,8 +82,7 @@ async fn main() -> Result<()> {
             .to_string();
             let (tx, rx) = mpsc::channel(16);
             let actor = SetupUi::new(
-                port,
-                config_path,
+                config.setup_ui_port,
                 mode_str,
                 dispatch_tx.clone(),
                 rx,

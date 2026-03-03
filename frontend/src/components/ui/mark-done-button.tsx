@@ -15,7 +15,7 @@ export function MarkDoneButton({ onClick, loading }: MarkDoneButtonProps) {
         'inline-flex w-full items-center justify-center gap-2 rounded-full',
         'bg-[var(--color-success)] text-[var(--color-success-foreground)]',
         'px-6 py-[14px] text-sm font-semibold leading-[1.4]',
-        'transition-opacity hover:opacity-90',
+        'transition-all duration-150 hover:opacity-90 active:scale-[0.97] motion-reduce:transform-none',
         'disabled:pointer-events-none disabled:opacity-50'
       )}
     >

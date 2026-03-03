@@ -191,12 +191,57 @@ pub(crate) async fn update_rank(
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn start_story(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     mut tx: OrgTx,
     Path(id): Path<Uuid>,
 ) -> Result<Json<StoryResponse>, ApiError> {
+    let org_id = tx.auth.org_id;
     let story = service::start_story(&mut tx, id).await?;
     tx.commit().await?;
-    // TODO: trigger agents::send_start_grooming via _state when container pipeline is wired
+
+    // Fire-and-forget: build context and send to the connected agent.
+    let story_id = story.id;
+    let project_id = story.project_id;
+    let description = story.description.clone();
+    let pipeline_stage = story.pipeline_stage.clone();
+    let s = state.clone();
+
+    tokio::spawn(async move {
+        if pipeline_stage.as_deref() == Some("implementation") {
+            // Bug stories skip grooming -> go straight to planning
+            match crate::agents::service::build_planning_context(
+                &s.pool,
+                org_id,
+                project_id,
+                story_id,
+                &description,
+            )
+            .await
+            {
+                Ok(ctx) => {
+                    crate::agents::service::send_start_planning(&s, project_id, story_id, ctx)
+                        .await;
+                }
+                Err(e) => tracing::error!(%story_id, %e, "failed to build planning context"),
+            }
+        } else {
+            // Feature/refactor: start with grooming
+            match crate::agents::service::build_grooming_context(
+                &s.pool,
+                org_id,
+                project_id,
+                &description,
+            )
+            .await
+            {
+                Ok(ctx) => {
+                    crate::agents::service::send_start_grooming(&s, project_id, story_id, ctx)
+                        .await;
+                }
+                Err(e) => tracing::error!(%story_id, %e, "failed to build grooming context"),
+            }
+        }
+    });
+
     Ok(Json(story))
 }

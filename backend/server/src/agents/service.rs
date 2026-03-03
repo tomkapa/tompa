@@ -529,6 +529,125 @@ pub async fn send_resume_task(
     }
 }
 
+// ── Context builders ──────────────────────────────────────────────────────────
+
+/// Build a `GroomingContext` for a story that is starting grooming.
+/// Opens its own transaction so it can be called after the handler's TX has committed.
+pub async fn build_grooming_context(
+    pool: &sqlx::PgPool,
+    org_id: Uuid,
+    project_id: Uuid,
+    description: &str,
+) -> Result<GroomingContext, ApiError> {
+    let knowledge = fetch_knowledge(pool, org_id, project_id).await?;
+    Ok(GroomingContext {
+        story_description: description.to_string(),
+        knowledge,
+        codebase_context: String::new(),
+    })
+}
+
+/// Build a `PlanningContext` for a bug story that skips grooming.
+/// Opens its own transaction so it can be called after the handler's TX has committed.
+pub async fn build_planning_context(
+    pool: &sqlx::PgPool,
+    org_id: Uuid,
+    project_id: Uuid,
+    story_id: Uuid,
+    description: &str,
+) -> Result<PlanningContext, ApiError> {
+    let knowledge = fetch_knowledge(pool, org_id, project_id).await?;
+
+    // Fetch any grooming decisions already recorded for this story.
+    let mut tx = pool.begin().await?;
+    sqlx::query("SELECT set_config('app.org_id', $1, true)")
+        .bind(org_id.to_string())
+        .execute(&mut *tx)
+        .await?;
+    let rounds =
+        qa_repo::list_rounds(&mut tx, org_id, Some(story_id), None, Some("grooming")).await?;
+    let grooming_decisions = extract_decisions(&rounds)?;
+    tx.commit().await?;
+
+    Ok(PlanningContext {
+        story_description: description.to_string(),
+        grooming_decisions,
+        knowledge,
+        codebase_context: String::new(),
+    })
+}
+
+/// Fetch knowledge entries (org + project level) without RLS — uses pool directly.
+async fn fetch_knowledge(
+    pool: &sqlx::PgPool,
+    org_id: Uuid,
+    project_id: Uuid,
+) -> Result<Vec<shared::types::KnowledgeEntry>, ApiError> {
+    let rows = sqlx::query_as::<_, crate::knowledge::repo::KnowledgeRow>(
+        r#"
+        SELECT id, org_id, project_id, story_id, category, title, content, created_at, updated_at
+        FROM knowledge_entries
+        WHERE deleted_at IS NULL
+          AND org_id = $1
+          AND (
+              (project_id IS NULL AND story_id IS NULL)
+              OR (project_id = $2 AND story_id IS NULL)
+          )
+        ORDER BY created_at
+        "#,
+    )
+    .bind(org_id)
+    .bind(project_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(to_knowledge_entries(rows))
+}
+
+fn to_knowledge_entries(
+    rows: Vec<crate::knowledge::repo::KnowledgeRow>,
+) -> Vec<shared::types::KnowledgeEntry> {
+    rows.into_iter()
+        .map(|r| shared::types::KnowledgeEntry {
+            title: r.title,
+            content: r.content,
+            category: parse_knowledge_category(&r.category),
+        })
+        .collect()
+}
+
+fn parse_knowledge_category(s: &str) -> shared::enums::KnowledgeCategory {
+    use shared::enums::KnowledgeCategory;
+    match s {
+        "convention" => KnowledgeCategory::Convention,
+        "adr" => KnowledgeCategory::Adr,
+        "api_doc" => KnowledgeCategory::ApiDoc,
+        "design_system" => KnowledgeCategory::DesignSystem,
+        _ => KnowledgeCategory::Custom,
+    }
+}
+
+/// Extract `QaDecision`s from persisted rounds (used for planning context).
+fn extract_decisions(
+    rounds: &[crate::qa::repo::QaRoundRow],
+) -> Result<Vec<shared::types::QaDecision>, ApiError> {
+    let mut decisions = Vec::new();
+    for round in rounds {
+        let content: QaContent = serde_json::from_value(round.content.clone())
+            .map_err(|e| ApiError::Internal(anyhow::anyhow!("bad QA content: {e}")))?;
+        for q in content.questions {
+            if let (Some(text), Some(domain)) = (q.selected_answer_text, Some(q.domain)) {
+                decisions.push(shared::types::QaDecision {
+                    question_text: q.text,
+                    answer_text: text,
+                    domain,
+                });
+            }
+        }
+    }
+    Ok(decisions)
+}
+
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 /// Convert the wire-format question list to the server-side `QaQuestion` format.

@@ -92,7 +92,7 @@ function TabsContent({ value, className, children, ...props }: TabsContentProps)
   const { active } = React.useContext(TabsContext)
   if (active !== value) return null
   return (
-    <div role="tabpanel" className={cn('', className)} {...props}>
+    <div role="tabpanel" className={cn('animate-in fade-in-0 duration-150', className)} {...props}>
       {children}
     </div>
   )

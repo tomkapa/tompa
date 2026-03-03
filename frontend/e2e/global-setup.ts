@@ -58,7 +58,24 @@ setup('authenticate and seed project', async ({ request }) => {
     expect([201, 409]).toContain(storyResp.status())
   }
 
-  fs.writeFileSync(SEED_FILE, JSON.stringify({ projectSlug }, null, 2))
+  // Retrieve stories to get the feature story ID for deep-link tests
+  const storiesResp = await request.get(
+    `${API_URL}/api/v1/stories?project_id=${project.id}`,
+  )
+  expect(storiesResp.status()).toBe(200)
+  const stories = await storiesResp.json()
+  const featureStory = stories.find(
+    (s: { title: string }) => s.title === 'Seeded E2E Story A',
+  )
+
+  fs.writeFileSync(
+    SEED_FILE,
+    JSON.stringify(
+      { projectSlug, featureStoryId: featureStory?.id ?? '' },
+      null,
+      2,
+    ),
+  )
 })
 
 function slugify(name: string): string {

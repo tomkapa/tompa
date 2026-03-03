@@ -48,7 +48,5 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/agent /usr/local/bin/agent
-# MODE controls operating mode: "project" | "dev" | "standalone"
-ENV MODE=project
 EXPOSE 3001
 ENTRYPOINT ["agent"]

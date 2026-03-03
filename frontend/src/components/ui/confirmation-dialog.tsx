@@ -1,5 +1,6 @@
 import { TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useExitAnimation } from '@/hooks/use-exit-animation'
 
 type ConfirmationReason = 'pending_questions' | 'unsent_draft'
 
@@ -24,7 +25,9 @@ interface ConfirmationDialogProps {
 }
 
 function ConfirmationDialog({ open, onStay, onLeave, reason }: ConfirmationDialogProps) {
-  if (!open) return null
+  const { visible, dataState } = useExitAnimation(open, 150)
+
+  if (!visible) return null
 
   const { title, description } = CONTENT[reason]
 
@@ -34,7 +37,8 @@ function ConfirmationDialog({ open, onStay, onLeave, reason }: ConfirmationDialo
       role="presentation"
     >
       <div
-        className="absolute inset-0 bg-black/40"
+        data-state={dataState}
+        className="absolute inset-0 bg-black/40 animate-in fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0"
         aria-hidden
         onClick={onStay}
       />
@@ -43,7 +47,8 @@ function ConfirmationDialog({ open, onStay, onLeave, reason }: ConfirmationDialo
         aria-modal
         aria-labelledby="confirm-dialog-title"
         aria-describedby="confirm-dialog-desc"
-        className="relative z-10 w-[420px] rounded-2xl border border-border bg-card shadow-[0_8px_24px_rgba(0,0,0,0.15)]"
+        data-state={dataState}
+        className="relative z-10 w-[420px] rounded-2xl border border-border bg-card shadow-[0_8px_24px_rgba(0,0,0,0.15)] animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex flex-col gap-3 px-6 pb-4 pt-6">

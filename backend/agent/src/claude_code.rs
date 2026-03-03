@@ -152,12 +152,13 @@ pub struct ClaudeCode {
 
 impl ClaudeCode {
     pub fn new(
+        binary: String,
         dispatch_tx: mpsc::Sender<DispatchMessage>,
         rx: mpsc::Receiver<ClaudeCodeMessage>,
     ) -> Self {
         let (monitor_tx, monitor_rx) = mpsc::channel(64);
         Self {
-            binary: std::env::var("CLAUDE_CMD").unwrap_or_else(|_| "claude".into()),
+            binary,
             dispatch_tx,
             rx,
             monitor_tx,
@@ -966,7 +967,7 @@ mod tests {
     async fn impl_result_completed_routes_to_dispatch() {
         let (dispatch_tx, mut dispatch_rx) = mpsc::channel(4);
         let (_claude_tx, claude_rx) = mpsc::channel(4);
-        let mut actor = ClaudeCode::new(dispatch_tx, claude_rx);
+        let mut actor = ClaudeCode::new("claude".into(), dispatch_tx, claude_rx);
 
         let task_id = Uuid::now_v7();
         actor
@@ -986,7 +987,7 @@ mod tests {
     async fn impl_result_failed_routes_to_dispatch() {
         let (dispatch_tx, mut dispatch_rx) = mpsc::channel(4);
         let (_claude_tx, claude_rx) = mpsc::channel(4);
-        let mut actor = ClaudeCode::new(dispatch_tx, claude_rx);
+        let mut actor = ClaudeCode::new("claude".into(), dispatch_tx, claude_rx);
 
         let task_id = Uuid::now_v7();
         actor
@@ -1004,7 +1005,7 @@ mod tests {
     async fn impl_result_paused_routes_to_dispatch() {
         let (dispatch_tx, mut dispatch_rx) = mpsc::channel(4);
         let (_claude_tx, claude_rx) = mpsc::channel(4);
-        let mut actor = ClaudeCode::new(dispatch_tx, claude_rx);
+        let mut actor = ClaudeCode::new("claude".into(), dispatch_tx, claude_rx);
 
         let task_id = Uuid::now_v7();
         actor

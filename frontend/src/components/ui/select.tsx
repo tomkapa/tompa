@@ -11,7 +11,7 @@ const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
       <div className="relative flex w-full items-center">
         <select
           className={cn(
-            'w-full appearance-none rounded-full border border-input bg-accent px-6 py-[18px] pr-12 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 transition-colors',
+            'w-full appearance-none rounded-full border border-input bg-accent px-6 py-[18px] pr-12 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary/50 disabled:cursor-not-allowed disabled:opacity-50 transition-all duration-200',
             !props.value && !props.defaultValue && 'text-muted-foreground',
             className
           )}

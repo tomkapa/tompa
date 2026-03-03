@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { InputGroup } from '@/components/ui/input'
 import { TextareaGroup } from '@/components/ui/textarea'
-import { SelectGroup } from '@/components/ui/select'
+import { ListboxGroup } from '@/components/ui/listbox'
 import {
   Dialog,
   DialogPortal,
@@ -94,11 +94,11 @@ function InputStep({ formData, owners, isLoading, onChange, onSubmit, onCancel }
           rows={3}
         />
 
-        <SelectGroup
+        <ListboxGroup
           label="Owner"
           placeholder="Select owner"
           value={formData.ownerId}
-          onChange={(e) => onChange({ ownerId: e.target.value })}
+          onChange={(ownerId) => onChange({ ownerId })}
           options={owners.map((o) => ({ value: o.id, label: o.name }))}
         />
 
