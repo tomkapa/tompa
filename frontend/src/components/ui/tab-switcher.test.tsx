@@ -19,13 +19,14 @@ describe('TabSwitcher', () => {
   it('active tab has distinct styling', () => {
     render(<TabSwitcher tabs={tabs} activeId="tab2" onChange={vi.fn()} />)
     const activeButton = screen.getByText('Details')
-    expect(activeButton.className).toContain('bg-card')
+    expect(activeButton.className).toContain('text-foreground')
+    expect(activeButton.className).not.toContain('text-muted-foreground')
   })
 
   it('inactive tab does not have active styling', () => {
     render(<TabSwitcher tabs={tabs} activeId="tab1" onChange={vi.fn()} />)
     const inactiveButton = screen.getByText('Details')
-    expect(inactiveButton.className).not.toContain('bg-card')
+    expect(inactiveButton.className).toContain('text-muted-foreground')
   })
 
   it('clicking a tab calls onChange with correct id', () => {

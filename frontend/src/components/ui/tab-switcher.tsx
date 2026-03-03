@@ -36,7 +36,7 @@ function TabSwitcher({ tabs, activeId, onChange, className }: TabSwitcherProps) 
     if (!hasTransition) {
       requestAnimationFrame(() => setHasTransition(true))
     }
-  }, [activeId, tabs])
+  }, [activeId, tabs, hasTransition])
 
   return (
     <div
