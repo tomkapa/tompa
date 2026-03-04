@@ -19,7 +19,7 @@ import {
   useListRounds,
   useSubmitAnswer,
   useCourseCorrect,
-  useRollback,
+
   getListRoundsQueryKey,
 } from '@/api/generated/qa/qa'
 import type {
@@ -49,14 +49,24 @@ function mapApiRound(r: QaRoundResponse): QaRound {
   return {
     id: r.id,
     roundNumber: r.round_number,
-    questions: r.content.questions.map((q: ApiQaQuestion) => ({
-      id: q.id,
-      domain: q.domain,
-      text: q.text,
-      options: q.options,
-      answeredIndex: q.selected_answer_index ?? undefined,
-      answeredText: q.selected_answer_text ?? undefined,
-    })),
+    status: r.status === 'active' ? 'active' : 'superseded',
+    questions: r.content.questions.map((q: ApiQaQuestion) => {
+      const raw = q as unknown as Record<string, unknown>
+      return {
+        id: q.id,
+        domain: q.domain,
+        text: q.text,
+        rationale: (raw.rationale as string) ?? '',
+        options: q.options.map((o: unknown) =>
+          typeof o === 'string'
+            ? { label: o, pros: '', cons: '' }
+            : (o as { label: string; pros: string; cons: string })
+        ),
+        recommendedIndex: (raw.recommended_option_index as number) ?? 0,
+        answeredIndex: q.selected_answer_index ?? undefined,
+        answeredText: q.selected_answer_text ?? undefined,
+      }
+    }),
   }
 }
 
@@ -65,9 +75,10 @@ function roundsToDecisions(rounds: QaRoundResponse[]): Decision[] {
   for (const round of rounds) {
     for (const q of round.content.questions) {
       if (q.selected_answer_index != null || q.selected_answer_text) {
+        const selectedOpt = q.options[q.selected_answer_index ?? 0] as unknown
         const answerText =
           q.selected_answer_text ??
-          q.options[q.selected_answer_index ?? 0] ??
+          (typeof selectedOpt === 'string' ? selectedOpt : (selectedOpt as { label: string } | undefined)?.label) ??
           ''
         decisions.push({
           id: q.id,
@@ -173,7 +184,7 @@ interface RightPanelProps {
   taskId?: string
   currentStage: string
   onAnswer: (questionId: string, answerIndex: number | null, answerText: string | null) => void
-  onRollback: (roundId: string) => void
+
   onCourseCorrect: (text: string) => void
 }
 
@@ -182,7 +193,7 @@ function RightPanel({
   decisions,
   level,
   onAnswer,
-  onRollback,
+
   onCourseCorrect,
 }: RightPanelProps) {
   const [activeTab, setActiveTab] = React.useState('qa')
@@ -197,7 +208,7 @@ function RightPanel({
           <QaThread
             rounds={rounds}
             onAnswer={onAnswer}
-            onRollback={onRollback}
+
             onCourseCorrect={onCourseCorrect}
           />
         ) : (
@@ -216,7 +227,7 @@ interface StoryViewProps {
   story: StoryResponse
   rounds: QaRoundResponse[]
   onAnswer: (questionId: string, answerIndex: number | null, answerText: string | null) => void
-  onRollback: (roundId: string) => void
+
   onCourseCorrect: (text: string) => void
   onTaskClick: (taskId: string) => void
 }
@@ -225,7 +236,7 @@ function StoryViewContent({
   story,
   rounds,
   onAnswer,
-  onRollback,
+
   onCourseCorrect,
   onTaskClick,
 }: Omit<StoryViewProps, 'projectId' | 'storyId'>) {
@@ -258,7 +269,7 @@ function StoryViewContent({
           storyId={story.id}
           currentStage={currentStage}
           onAnswer={onAnswer}
-          onRollback={onRollback}
+
           onCourseCorrect={onCourseCorrect}
         />
       </div>
@@ -279,7 +290,7 @@ function StoryViewContent({
             <QaThread
               rounds={mappedRounds}
               onAnswer={onAnswer}
-              onRollback={onRollback}
+  
               onCourseCorrect={onCourseCorrect}
             />
           </div>
@@ -301,7 +312,7 @@ interface TaskViewContentProps {
   storyId: string
   rounds: QaRoundResponse[]
   onAnswer: (questionId: string, answerIndex: number | null, answerText: string | null) => void
-  onRollback: (roundId: string) => void
+
   onCourseCorrect: (text: string) => void
 }
 
@@ -309,7 +320,7 @@ function TaskViewContent({
   taskId,
   rounds,
   onAnswer,
-  onRollback,
+
   onCourseCorrect,
 }: TaskViewContentProps) {
   const queryClient = useQueryClient()
@@ -366,7 +377,7 @@ function TaskViewContent({
           taskId={taskId}
           currentStage={currentStage}
           onAnswer={onAnswer}
-          onRollback={onRollback}
+
           onCourseCorrect={onCourseCorrect}
         />
       </div>
@@ -387,7 +398,7 @@ function TaskViewContent({
             <QaThread
               rounds={mappedRounds}
               onAnswer={onAnswer}
-              onRollback={onRollback}
+  
               onCourseCorrect={onCourseCorrect}
             />
           </div>
@@ -470,19 +481,6 @@ export function StoryModal() {
     },
   })
 
-  const rollbackMutation = useRollback({
-    mutation: {
-      onSuccess: () => {
-        void queryClient.invalidateQueries({
-          queryKey: getListRoundsQueryKey(roundsParams),
-        })
-      },
-      onError: () => {
-        useToastStore.getState().addToast({ variant: 'error', title: 'Failed to rollback' })
-      },
-    },
-  })
-
   // ── Callbacks ──────────────────────────────────────────────────────────────
   function handleAnswer(
     questionId: string,
@@ -500,7 +498,7 @@ export function StoryModal() {
       data: {
         question_id: questionId,
         selected_answer_index: answerIndex ?? undefined,
-        answer_text: answerText ?? selectedOption ?? '',
+        answer_text: answerText ?? (typeof selectedOption === 'string' ? selectedOption : selectedOption?.label) ?? '',
       },
     })
   }
@@ -518,10 +516,6 @@ export function StoryModal() {
         task_id: taskId ?? undefined,
       },
     })
-  }
-
-  function handleRollback(roundId: string) {
-    rollbackMutation.mutate({ id: roundId })
   }
 
   // ── Close logic ────────────────────────────────────────────────────────────
@@ -590,7 +584,7 @@ export function StoryModal() {
             storyId={storyId}
             rounds={apiRounds}
             onAnswer={handleAnswer}
-            onRollback={handleRollback}
+
             onCourseCorrect={handleCourseCorrect}
           />
         ) : story ? (
@@ -598,7 +592,7 @@ export function StoryModal() {
             story={story}
             rounds={apiRounds}
             onAnswer={handleAnswer}
-            onRollback={handleRollback}
+
             onCourseCorrect={handleCourseCorrect}
             onTaskClick={handleTaskClick}
           />

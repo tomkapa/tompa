@@ -77,8 +77,13 @@ pub fn build_grooming_prompt(
 {previous}
 
 Based on your {role_title} perspective, generate 2–4 clarifying questions about this story.
-Each question must have 2–5 concise, mutually-exclusive predefined answer options.
+Each question must have 2–5 mutually-exclusive predefined answer options.
 Do NOT ask questions already answered in "Decisions Already Made".
+
+For each question:
+- "rationale": One sentence explaining why this decision matters and its downstream consequences. Be specific to the story context.
+- "options": Each option is an object with "label" (concise choice), "pros" (2–4 sentences, honest advantages), and "cons" (2–4 sentences, honest disadvantages).
+- "recommended_option_index": Zero-based index of the option you recommend, grounded in the story context.
 
 Respond ONLY with valid JSON in exactly this format — no other text, no markdown fences:
 {{
@@ -86,7 +91,20 @@ Respond ONLY with valid JSON in exactly this format — no other text, no markdo
     {{
       "text": "Your question here?",
       "domain": "{domain}",
-      "options": ["Option A", "Option B", "Option C"]
+      "rationale": "This decision matters because...",
+      "recommended_option_index": 0,
+      "options": [
+        {{
+          "label": "Option A",
+          "pros": "Advantages of option A.",
+          "cons": "Disadvantages of option A."
+        }},
+        {{
+          "label": "Option B",
+          "pros": "Advantages of option B.",
+          "cons": "Disadvantages of option B."
+        }}
+      ]
     }}
   ]
 }}"#,

@@ -63,7 +63,7 @@ function DecisionTrail({ decisions, level, className }: DecisionTrailProps) {
   return (
     <div
       className={cn(
-        'flex flex-col overflow-hidden rounded-[24px] border border-border bg-background',
+        'flex h-full min-h-0 flex-col overflow-hidden rounded-[24px] border border-border bg-background',
         className
       )}
     >

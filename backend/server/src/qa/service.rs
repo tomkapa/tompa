@@ -1,6 +1,8 @@
 use uuid::Uuid;
 
-use crate::{db::OrgTx, errors::ApiError};
+use shared::types::Answer;
+
+use crate::{db::OrgTx, errors::ApiError, story::repo as story_repo};
 
 use super::{
     repo,
@@ -9,6 +11,27 @@ use super::{
         SubmitAnswerRequest, VALID_STAGES,
     },
 };
+
+// ── Submit-answer result types ──────────────────────────────────────────────
+
+/// Payload returned when all questions in a round have been answered.
+pub struct AllAnsweredPayload {
+    pub project_id: Uuid,
+    pub round_id: Uuid,
+    pub story_id: Uuid,
+    pub task_id: Option<Uuid>,
+    pub stage: String,
+    pub answers: Vec<Answer>,
+    /// Original questions from this round, needed to build recovery context.
+    pub questions: Vec<shared::types::Question>,
+}
+
+/// Result of `submit_answer`, carrying the API response and an optional
+/// notification payload when the last question in the round was just answered.
+pub struct SubmitAnswerResult {
+    pub response: QaRoundResponse,
+    pub notify: Option<AllAnsweredPayload>,
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -56,7 +79,7 @@ pub async fn submit_answer(
     tx: &mut OrgTx,
     round_id: Uuid,
     req: SubmitAnswerRequest,
-) -> Result<QaRoundResponse, ApiError> {
+) -> Result<SubmitAnswerResult, ApiError> {
     let org_id = tx.auth.org_id;
     let user_id = tx.auth.user_id;
 
@@ -68,6 +91,10 @@ pub async fn submit_answer(
         return Err(QaError::RoundNotActive.into());
     }
 
+    let story_id = row.story_id;
+    let task_id = row.task_id;
+    let stage = row.stage.clone();
+
     let mut content: QaContent = serde_json::from_value(row.content)
         .map_err(|e| ApiError::Internal(anyhow::anyhow!("Failed to parse QA content: {e}")))?;
 
@@ -76,10 +103,6 @@ pub async fn submit_answer(
         .iter_mut()
         .find(|q| q.id == req.question_id)
         .ok_or(QaError::QuestionNotFound)?;
-
-    if question.selected_answer_index.is_some() || question.selected_answer_text.is_some() {
-        return Err(QaError::AlreadyAnswered.into());
-    }
 
     question.selected_answer_index = req.selected_answer_index;
     question.selected_answer_text = Some(req.answer_text);
@@ -93,7 +116,70 @@ pub async fn submit_answer(
         .await?
         .ok_or(QaError::NotFound)?;
 
-    to_response(updated)
+    // Check if all questions are now answered.
+    let all_answered = content
+        .questions
+        .iter()
+        .all(|q| q.selected_answer_text.is_some());
+
+    let notify = if all_answered {
+        let story = story_repo::get_story(tx, story_id, org_id)
+            .await?
+            .ok_or(QaError::NotFound)?;
+
+        let answers: Vec<Answer> = content
+            .questions
+            .iter()
+            .filter_map(|q| {
+                Some(Answer {
+                    question_id: q.id,
+                    selected_answer_index: q.selected_answer_index,
+                    selected_answer_text: q.selected_answer_text.clone()?,
+                    answered_by: q.answered_by?,
+                    answered_at: q.answered_at?,
+                })
+            })
+            .collect();
+
+        // Build questions in shared::types::Question format for the recovery context.
+        let questions: Vec<shared::types::Question> = content
+            .questions
+            .iter()
+            .map(|q| shared::types::Question {
+                id: q.id,
+                text: q.text.clone(),
+                domain: q.domain.clone(),
+                rationale: q.rationale.clone(),
+                options: q
+                    .options
+                    .iter()
+                    .map(|o| shared::types::QuestionOption {
+                        label: o.label.clone(),
+                        pros: o.pros.clone(),
+                        cons: o.cons.clone(),
+                    })
+                    .collect(),
+                recommended_option_index: q.recommended_option_index,
+            })
+            .collect();
+
+        Some(AllAnsweredPayload {
+            project_id: story.project_id,
+            round_id,
+            story_id,
+            task_id,
+            stage: stage.clone(),
+            answers,
+            questions,
+        })
+    } else {
+        None
+    };
+
+    Ok(SubmitAnswerResult {
+        response: to_response(updated)?,
+        notify,
+    })
 }
 
 pub async fn rollback(tx: &mut OrgTx, round_id: Uuid) -> Result<QaRoundResponse, ApiError> {

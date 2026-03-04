@@ -4,6 +4,15 @@
  * Tompa API
  * OpenAPI spec version: 1.0.0
  */
+export interface ApproveRefinedDescriptionRequest {
+  /**
+   * If provided, overrides the AI-generated refined description.
+If `None`, the pending AI version is used as-is.
+   * @nullable
+   */
+  description?: string | null;
+}
+
 export interface CourseCorrectionRequest {
   stage: string;
   story_id: string;
@@ -147,6 +156,12 @@ export interface ProjectResponse {
   updated_at: string;
 }
 
+export interface QaQuestionOption {
+  cons: string;
+  label: string;
+  pros: string;
+}
+
 export interface QaQuestion {
   /** @nullable */
   answered_at?: string | null;
@@ -154,7 +169,10 @@ export interface QaQuestion {
   answered_by?: string | null;
   domain: string;
   id: string;
-  options: string[];
+  options: QaQuestionOption[];
+  rationale: string;
+  /** @minimum 0 */
+  recommended_option_index: number;
   /** @nullable */
   selected_answer_index?: number | null;
   /** @nullable */
@@ -215,6 +233,8 @@ export interface StoryResponse {
   org_id: string;
   owner_id: string;
   owner_name: string;
+  /** @nullable */
+  pending_refined_description?: string | null;
   /** @nullable */
   pipeline_stage?: string | null;
   project_id: string;

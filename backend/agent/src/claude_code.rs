@@ -20,8 +20,8 @@ use uuid::Uuid;
 
 use shared::enums::TaskType;
 use shared::types::{
-    Answer, GroomingContext, PauseQuestion, PlanningContext, ProposedTask, QaDecision,
-    QaRoundContent, Question, TaskContext,
+    Answer, AnswerContext, GroomingContext, PauseQuestion, PlanningContext, ProposedTask,
+    QaDecision, QaRoundContent, Question, TaskContext,
 };
 
 use crate::dispatcher::DispatchMessage;
@@ -43,6 +43,13 @@ pub enum ClaudeCodeMessage {
     AnswerReceived {
         round_id: Uuid,
         answers: Vec<Answer>,
+        context: AnswerContext,
+    },
+    // Description approval after refinement
+    DescriptionApproved {
+        story_id: Uuid,
+        stage: String,
+        description: String,
     },
     // Implementation mode
     StartTask {
@@ -105,12 +112,22 @@ struct ClaudeOutput {
     is_error: bool,
 }
 
+/// Raw option shape as the model outputs it.
+#[derive(Deserialize)]
+struct RawQuestionOption {
+    label: String,
+    pros: String,
+    cons: String,
+}
+
 /// Raw question shape as the model outputs it (no id — we assign UUIDs).
 #[derive(Deserialize)]
 struct RawQuestion {
     text: String,
     domain: String,
-    options: Vec<String>,
+    rationale: String,
+    options: Vec<RawQuestionOption>,
+    recommended_option_index: usize,
 }
 
 #[derive(Deserialize)]
@@ -134,6 +151,13 @@ struct RawDecomposition {
     tasks: Vec<RawTask>,
 }
 
+/// Preserved context for task decomposition after planning description approval.
+struct PendingDecomposition {
+    story_id: Uuid,
+    context: PlanningContext,
+    decisions: Vec<QaDecision>,
+}
+
 // ── Actor ─────────────────────────────────────────────────────────────────────
 
 pub struct ClaudeCode {
@@ -148,6 +172,8 @@ pub struct ClaudeCode {
     active_qa: Option<QaSession>,
     /// Active implementation subprocesses keyed by task_id.
     active_impl: HashMap<Uuid, Child>,
+    /// Stashed context for task decomposition after planning description approval.
+    pending_planning_decomposition: Option<PendingDecomposition>,
 }
 
 impl ClaudeCode {
@@ -165,6 +191,7 @@ impl ClaudeCode {
             monitor_rx,
             active_qa: None,
             active_impl: HashMap::new(),
+            pending_planning_decomposition: None,
         }
     }
 
@@ -199,8 +226,21 @@ impl ClaudeCode {
             ClaudeCodeMessage::StartPlanning { story_id, context } => {
                 self.handle_start_planning(story_id, context).await;
             }
-            ClaudeCodeMessage::AnswerReceived { round_id, answers } => {
-                self.handle_answer_received(round_id, answers).await;
+            ClaudeCodeMessage::AnswerReceived {
+                round_id,
+                answers,
+                context,
+            } => {
+                self.handle_answer_received(round_id, answers, context)
+                    .await;
+            }
+            ClaudeCodeMessage::DescriptionApproved {
+                story_id,
+                stage,
+                description,
+            } => {
+                self.handle_description_approved(story_id, &stage, &description)
+                    .await;
             }
             ClaudeCodeMessage::StartTask {
                 task_id,
@@ -275,41 +315,82 @@ impl ClaudeCode {
         }
     }
 
-    async fn handle_answer_received(&mut self, round_id: Uuid, answers: Vec<Answer>) {
-        let Some(qa) = self.active_qa.take() else {
-            warn!(%round_id, "AnswerReceived but no active QA session — ignoring");
-            return;
-        };
-        match qa {
-            QaSession::Grooming {
-                story_id,
-                context,
-                decisions,
-                last_questions,
-            } => {
-                self.process_grooming_answers(
+    async fn handle_answer_received(
+        &mut self,
+        round_id: Uuid,
+        answers: Vec<Answer>,
+        recovery: AnswerContext,
+    ) {
+        // Fast path: use in-memory session if available.
+        if let Some(qa) = self.active_qa.take() {
+            match qa {
+                QaSession::Grooming {
                     story_id,
                     context,
                     decisions,
                     last_questions,
+                } => {
+                    self.process_grooming_answers(
+                        story_id,
+                        context,
+                        decisions,
+                        last_questions,
+                        answers,
+                    )
+                    .await;
+                }
+                QaSession::Planning {
+                    story_id,
+                    context,
+                    decisions,
+                    last_questions,
+                } => {
+                    self.process_planning_answers(
+                        story_id,
+                        context,
+                        decisions,
+                        last_questions,
+                        answers,
+                    )
+                    .await;
+                }
+            }
+            return;
+        }
+
+        // Cold path: reconstruct session from the recovery context.
+        info!(%round_id, stage = %recovery.stage, "recovering QA session from AnswerReceived context");
+        match recovery.stage.as_str() {
+            "grooming" => {
+                let Some(context) = recovery.grooming_context else {
+                    error!(%round_id, "recovery context missing grooming_context");
+                    return;
+                };
+                self.process_grooming_answers(
+                    recovery.story_id,
+                    context,
+                    recovery.prior_decisions,
+                    recovery.questions,
                     answers,
                 )
                 .await;
             }
-            QaSession::Planning {
-                story_id,
-                context,
-                decisions,
-                last_questions,
-            } => {
+            "planning" => {
+                let Some(context) = recovery.planning_context else {
+                    error!(%round_id, "recovery context missing planning_context");
+                    return;
+                };
                 self.process_planning_answers(
-                    story_id,
+                    recovery.story_id,
                     context,
-                    decisions,
-                    last_questions,
+                    recovery.prior_decisions,
+                    recovery.questions,
                     answers,
                 )
                 .await;
+            }
+            other => {
+                warn!(%round_id, %other, "AnswerReceived for unhandled stage — ignoring");
             }
         }
     }
@@ -332,13 +413,31 @@ impl ClaudeCode {
             .unwrap_or(false);
 
         if sufficient {
-            info!(%story_id, "grooming convergence: SUFFICIENT");
-            self.send(DispatchMessage::ConvergenceResult {
-                story_id,
-                task_id: None,
-                sufficient: true,
-            })
-            .await;
+            info!(%story_id, "grooming convergence: SUFFICIENT — generating refined description");
+            let refinement_prompt = prompts::description_refinement::build_refinement_prompt(
+                &context.story_description,
+                &decisions,
+                "grooming",
+            );
+            match self.generate_refined_description(&refinement_prompt).await {
+                Ok(refined) => {
+                    self.send(DispatchMessage::RefinedDescriptionReady {
+                        story_id,
+                        stage: "grooming".into(),
+                        refined_description: refined,
+                    })
+                    .await;
+                }
+                Err(e) => {
+                    error!(%story_id, %e, "refinement LLM call failed — falling back to convergence stub");
+                    self.send(DispatchMessage::ConvergenceResult {
+                        story_id,
+                        task_id: None,
+                        sufficient: true,
+                    })
+                    .await;
+                }
+            }
         } else {
             info!(%story_id, "grooming convergence: CONTINUE");
             let questions = self.generate_grooming_questions(&context, &decisions).await;
@@ -380,21 +479,42 @@ impl ClaudeCode {
             .unwrap_or(false);
 
         if sufficient {
-            info!(%story_id, "planning convergence: SUFFICIENT — generating decomposition");
-            self.send(DispatchMessage::ConvergenceResult {
-                story_id,
-                task_id: None,
-                sufficient: true,
-            })
-            .await;
-            let decomp_prompt =
-                prompts::task_decomposition::build_decomposition_prompt(&context, &decisions);
-            match self.generate_decomposition(&decomp_prompt).await {
-                Ok(tasks) => {
-                    self.send(DispatchMessage::TaskDecompositionReady { story_id, tasks })
-                        .await;
+            info!(%story_id, "planning convergence: SUFFICIENT — generating refined description");
+            let refinement_prompt = prompts::description_refinement::build_refinement_prompt(
+                &context.story_description,
+                &decisions,
+                "planning",
+            );
+            match self.generate_refined_description(&refinement_prompt).await {
+                Ok(refined) => {
+                    self.pending_planning_decomposition = Some(PendingDecomposition {
+                        story_id,
+                        context,
+                        decisions,
+                    });
+                    self.send(DispatchMessage::RefinedDescriptionReady {
+                        story_id,
+                        stage: "planning".into(),
+                        refined_description: refined,
+                    })
+                    .await;
                 }
-                Err(e) => error!(%story_id, %e, "task decomposition failed"),
+                Err(e) => {
+                    // Fallback: run decomposition inline (old behavior).
+                    error!(%story_id, %e, "refinement LLM call failed — falling back to inline decomposition");
+                    let decomp_prompt = prompts::task_decomposition::build_decomposition_prompt(
+                        &context, &decisions,
+                    );
+                    match self.generate_decomposition(&decomp_prompt).await {
+                        Ok(tasks) => {
+                            self.send(DispatchMessage::TaskDecompositionReady { story_id, tasks })
+                                .await;
+                        }
+                        Err(e2) => {
+                            error!(%story_id, %e2, "task decomposition fallback also failed")
+                        }
+                    }
+                }
             }
         } else {
             info!(%story_id, "planning convergence: CONTINUE");
@@ -416,6 +536,71 @@ impl ClaudeCode {
                     .await;
                 }
                 Err(e) => error!(%story_id, %e, "follow-up planning questions failed"),
+            }
+        }
+    }
+
+    // ── Description refinement ─────────────────────────────────────────────────
+
+    /// One-shot call that returns the refined description as plain text.
+    async fn generate_refined_description(&self, prompt: &str) -> Result<String> {
+        let output = Command::new(&self.binary)
+            .arg("--print")
+            .arg(prompt)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .await
+            .map_err(|e| anyhow!("failed to spawn {}: {}", self.binary, e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(anyhow!("claude exited non-zero: {stderr}"));
+        }
+
+        let stdout = String::from_utf8(output.stdout)?;
+        Ok(stdout.trim().to_string())
+    }
+
+    async fn handle_description_approved(
+        &mut self,
+        story_id: Uuid,
+        stage: &str,
+        description: &str,
+    ) {
+        match stage {
+            "planning" => {
+                let pending = match self.pending_planning_decomposition.take() {
+                    Some(p) => p,
+                    None => {
+                        error!(%story_id, "DescriptionApproved for planning but no pending decomposition — agent may have restarted");
+                        return;
+                    }
+                };
+                debug_assert_eq!(
+                    pending.story_id, story_id,
+                    "story_id mismatch in PendingDecomposition"
+                );
+                let mut context = pending.context;
+                context.story_description = description.to_string();
+                let decomp_prompt = prompts::task_decomposition::build_decomposition_prompt(
+                    &context,
+                    &pending.decisions,
+                );
+                match self.generate_decomposition(&decomp_prompt).await {
+                    Ok(tasks) => {
+                        self.send(DispatchMessage::TaskDecompositionReady { story_id, tasks })
+                            .await;
+                    }
+                    Err(e) => error!(%story_id, %e, "task decomposition after approval failed"),
+                }
+            }
+            "grooming" => {
+                // No-op on the agent side — server handles starting planning.
+                info!(%story_id, "grooming description approved — server will start planning");
+            }
+            other => {
+                warn!(%story_id, %other, "DescriptionApproved for unhandled stage");
             }
         }
     }
@@ -559,7 +744,17 @@ impl ClaudeCode {
                 id: Uuid::now_v7(),
                 text: q.text,
                 domain: q.domain,
-                options: q.options,
+                rationale: q.rationale,
+                options: q
+                    .options
+                    .into_iter()
+                    .map(|o| shared::types::QuestionOption {
+                        label: o.label,
+                        pros: o.pros,
+                        cons: o.cons,
+                    })
+                    .collect(),
+                recommended_option_index: q.recommended_option_index,
             })
             .collect();
 
@@ -879,7 +1074,9 @@ mod tests {
             id,
             text: text.into(),
             domain: domain.into(),
+            rationale: "Test rationale.".into(),
             options: vec![],
+            recommended_option_index: 0,
         }
     }
 
@@ -946,11 +1143,14 @@ mod tests {
 
     #[test]
     fn deserialize_raw_qa_round() {
-        let json = r#"{"questions":[{"text":"Q?","domain":"business","options":["A","B"]}]}"#;
+        let json = r#"{"questions":[{"text":"Q?","domain":"business","rationale":"Important.","recommended_option_index":0,"options":[{"label":"A","pros":"Good.","cons":"Bad."},{"label":"B","pros":"Fast.","cons":"Slow."}]}]}"#;
         let raw: RawQaRound = serde_json::from_str(json).unwrap();
         assert_eq!(raw.questions.len(), 1);
         assert_eq!(raw.questions[0].text, "Q?");
-        assert_eq!(raw.questions[0].options, vec!["A", "B"]);
+        assert_eq!(raw.questions[0].options.len(), 2);
+        assert_eq!(raw.questions[0].options[0].label, "A");
+        assert_eq!(raw.questions[0].rationale, "Important.");
+        assert_eq!(raw.questions[0].recommended_option_index, 0);
     }
 
     #[test]
@@ -1014,7 +1214,20 @@ mod tests {
                 question: PauseQuestion {
                     text: "Which approach?".into(),
                     domain: "development".into(),
-                    options: vec!["A".into(), "B".into()],
+                    rationale: "Affects implementation complexity.".into(),
+                    options: vec![
+                        shared::types::QuestionOption {
+                            label: "A".into(),
+                            pros: "Simple.".into(),
+                            cons: "Limited.".into(),
+                        },
+                        shared::types::QuestionOption {
+                            label: "B".into(),
+                            pros: "Flexible.".into(),
+                            cons: "Complex.".into(),
+                        },
+                    ],
+                    recommended_option_index: 0,
                 },
             })
             .await;

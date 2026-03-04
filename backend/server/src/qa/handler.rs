@@ -1,12 +1,15 @@
 use axum::{
     Json, Router,
-    extract::{Path, Query},
+    extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
 };
 use uuid::Uuid;
 
-use crate::{auth::middleware::require_auth, db::OrgTx, errors::ApiError, state::AppState};
+use crate::{
+    agents, auth::middleware::require_auth, db::OrgTx, errors::ApiError,
+    sse::broadcaster::SseEvent, state::AppState,
+};
 
 use super::{
     service,
@@ -67,13 +70,41 @@ pub(crate) async fn list_rounds(
     security(("cookieAuth" = []))
 )]
 pub(crate) async fn submit_answer(
+    State(state): State<AppState>,
     mut tx: OrgTx,
     Path(id): Path<Uuid>,
     Json(req): Json<SubmitAnswerRequest>,
 ) -> Result<Json<QaRoundResponse>, ApiError> {
-    let round = service::submit_answer(&mut tx, id, req).await?;
+    let org_id = tx.auth.org_id;
+    let result = service::submit_answer(&mut tx, id, req).await?;
     tx.commit().await?;
-    Ok(Json(round))
+
+    if let Some(payload) = result.notify {
+        let s = state.clone();
+        tokio::spawn(async move {
+            s.broadcaster.broadcast(
+                org_id,
+                SseEvent::AnswersForwarded {
+                    story_id: payload.story_id,
+                    task_id: payload.task_id,
+                    round_id: payload.round_id,
+                },
+            );
+            agents::service::send_answer_received(
+                &s,
+                payload.project_id,
+                org_id,
+                payload.story_id,
+                &payload.stage,
+                payload.round_id,
+                payload.answers,
+                payload.questions,
+            )
+            .await;
+        });
+    }
+
+    Ok(Json(result.response))
 }
 
 /// POST /api/v1/qa-rounds/:id/rollback — checkpoint rollback to this round.

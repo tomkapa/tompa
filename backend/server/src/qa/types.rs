@@ -25,11 +25,20 @@ pub enum QaError {
 // ── JSONB content structures ──────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
+pub struct QaQuestionOption {
+    pub label: String,
+    pub pros: String,
+    pub cons: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
 pub struct QaQuestion {
     pub id: Uuid,
     pub text: String,
     pub domain: String,
-    pub options: Vec<String>,
+    pub rationale: String,
+    pub options: Vec<QaQuestionOption>,
+    pub recommended_option_index: usize,
     pub selected_answer_index: Option<i32>,
     pub selected_answer_text: Option<String>,
     pub answered_by: Option<Uuid>,

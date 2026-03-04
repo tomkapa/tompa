@@ -86,9 +86,17 @@ pub struct StoryResponse {
     pub owner_name: String,
     pub rank: String,
     pub pipeline_stage: Option<String>,
+    pub pending_refined_description: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub tasks: Vec<TaskSummary>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ApproveRefinedDescriptionRequest {
+    /// If provided, overrides the AI-generated refined description.
+    /// If `None`, the pending AI version is used as-is.
+    pub description: Option<String>,
 }
 
 // ── Validation helpers ────────────────────────────────────────────────────────

@@ -1,9 +1,16 @@
+export interface QaQuestionOption {
+  label: string
+  pros: string
+  cons: string
+}
+
 export interface QaQuestion {
   id: string
   domain: string
   text: string
-  /** Option strings from the API (mirrors QaQuestion.options: string[] in generated schema) */
-  options: string[]
+  rationale: string
+  options: QaQuestionOption[]
+  recommendedIndex: number
   /** Index of the selected predefined option, if answered */
   answeredIndex?: number
   /** Free-form "other" answer text, if answered with custom input */
@@ -13,6 +20,7 @@ export interface QaQuestion {
 export interface QaRound {
   id: string
   roundNumber: number
+  status: 'active' | 'superseded'
   questions: QaQuestion[]
   /** Whether this round is the rollback point (restored-to marker) */
   isRollbackPoint?: boolean

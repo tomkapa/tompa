@@ -114,13 +114,23 @@ fn make_answer() -> Answer {
     }
 }
 
+fn make_question_option(label: &str) -> QuestionOption {
+    QuestionOption {
+        label: label.into(),
+        pros: format!("Pros of {label}."),
+        cons: format!("Cons of {label}."),
+    }
+}
+
 fn make_qa_round() -> QaRoundContent {
     QaRoundContent {
         questions: vec![Question {
             id: Uuid::now_v7(),
             text: "Should we use REST?".into(),
             domain: "architecture".into(),
-            options: vec!["yes".into(), "no".into()],
+            rationale: "This decision affects the entire API surface.".into(),
+            options: vec![make_question_option("yes"), make_question_option("no")],
+            recommended_option_index: 0,
         }],
     }
 }
@@ -173,6 +183,25 @@ fn server_to_container_answer_received() {
     let msg = ServerToContainer::AnswerReceived {
         round_id: Uuid::now_v7(),
         answers: vec![make_answer()],
+        context: AnswerContext {
+            story_id: Uuid::now_v7(),
+            stage: "grooming".into(),
+            questions: vec![Question {
+                id: Uuid::now_v7(),
+                text: "Q?".into(),
+                domain: "backend".into(),
+                rationale: "Important for backend architecture.".into(),
+                options: vec![make_question_option("A")],
+                recommended_option_index: 0,
+            }],
+            prior_decisions: vec![],
+            grooming_context: Some(GroomingContext {
+                story_description: "desc".into(),
+                knowledge: vec![],
+                codebase_context: String::new(),
+            }),
+            planning_context: None,
+        },
     };
     let json = serde_json::to_string(&msg).unwrap();
     let back: ServerToContainer = serde_json::from_str(&json).unwrap();
@@ -222,6 +251,21 @@ fn server_to_container_resume_task() {
 fn server_to_container_cancel_task() {
     let msg = ServerToContainer::CancelTask {
         task_id: Uuid::now_v7(),
+    };
+    let json = serde_json::to_string(&msg).unwrap();
+    let back: ServerToContainer = serde_json::from_str(&json).unwrap();
+    assert_eq!(
+        serde_json::to_value(&msg).unwrap(),
+        serde_json::to_value(&back).unwrap()
+    );
+}
+
+#[test]
+fn server_to_container_description_approved() {
+    let msg = ServerToContainer::DescriptionApproved {
+        story_id: Uuid::now_v7(),
+        stage: "grooming".into(),
+        description: "Refined story description".into(),
     };
     let json = serde_json::to_string(&msg).unwrap();
     let back: ServerToContainer = serde_json::from_str(&json).unwrap();
@@ -301,7 +345,12 @@ fn container_to_server_task_paused() {
         question: PauseQuestion {
             text: "Which db?".into(),
             domain: "infra".into(),
-            options: vec!["postgres".into(), "sqlite".into()],
+            rationale: "Database choice affects scalability and operations.".into(),
+            options: vec![
+                make_question_option("postgres"),
+                make_question_option("sqlite"),
+            ],
+            recommended_option_index: 0,
         },
     };
     let json = serde_json::to_string(&msg).unwrap();
@@ -345,6 +394,21 @@ fn container_to_server_status_update() {
     let msg = ContainerToServer::StatusUpdate {
         task_id: Uuid::now_v7(),
         status_text: "running tests".into(),
+    };
+    let json = serde_json::to_string(&msg).unwrap();
+    let back: ContainerToServer = serde_json::from_str(&json).unwrap();
+    assert_eq!(
+        serde_json::to_value(&msg).unwrap(),
+        serde_json::to_value(&back).unwrap()
+    );
+}
+
+#[test]
+fn container_to_server_refined_description() {
+    let msg = ContainerToServer::RefinedDescription {
+        story_id: Uuid::now_v7(),
+        stage: "grooming".into(),
+        refined_description: "A refined description".into(),
     };
     let json = serde_json::to_string(&msg).unwrap();
     let back: ContainerToServer = serde_json::from_str(&json).unwrap();

@@ -32,8 +32,13 @@ Do NOT ask high-level architecture questions — those were decided in planning.
 {previous}
 
 Generate 2–4 specific, implementation-level questions.
-Each question must have 2–5 concise answer options.
+Each question must have 2–5 mutually-exclusive answer options.
 Do NOT re-ask anything already decided above.
+
+For each question:
+- "rationale": One sentence explaining why this decision matters and its downstream consequences. Be specific to the task context.
+- "options": Each option is an object with "label" (concise choice), "pros" (2–4 sentences, honest advantages), and "cons" (2–4 sentences, honest disadvantages).
+- "recommended_option_index": Zero-based index of the option you recommend, grounded in the task context.
 
 Respond ONLY with valid JSON — no markdown fences, no extra text:
 {{
@@ -41,7 +46,20 @@ Respond ONLY with valid JSON — no markdown fences, no extra text:
     {{
       "text": "Your question here?",
       "domain": "development",
-      "options": ["Option A", "Option B"]
+      "rationale": "This decision matters because...",
+      "recommended_option_index": 0,
+      "options": [
+        {{
+          "label": "Option A",
+          "pros": "Advantages of option A.",
+          "cons": "Disadvantages of option A."
+        }},
+        {{
+          "label": "Option B",
+          "pros": "Advantages of option B.",
+          "cons": "Disadvantages of option B."
+        }}
+      ]
     }}
   ]
 }}"#,

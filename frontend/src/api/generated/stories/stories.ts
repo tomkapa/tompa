@@ -24,6 +24,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  ApproveRefinedDescriptionRequest,
   CreateStoryRequest,
   ListStoriesParams,
   RankUpdateRequest,
@@ -597,6 +598,112 @@ export const useUpdateStory = <TError = void,
         TContext
       > => {
       return useMutation(getUpdateStoryMutationOptions(options), queryClient);
+    }
+    /**
+ * @summary POST /api/v1/stories/:id/approve-description — approve a pending refined description.
+ */
+export type approveDescriptionResponse200 = {
+  data: StoryResponse
+  status: 200
+}
+
+export type approveDescriptionResponse400 = {
+  data: void
+  status: 400
+}
+
+export type approveDescriptionResponse401 = {
+  data: void
+  status: 401
+}
+
+export type approveDescriptionResponse404 = {
+  data: void
+  status: 404
+}
+
+export type approveDescriptionResponseSuccess = (approveDescriptionResponse200) & {
+  headers: Headers;
+};
+export type approveDescriptionResponseError = (approveDescriptionResponse400 | approveDescriptionResponse401 | approveDescriptionResponse404) & {
+  headers: Headers;
+};
+
+export type approveDescriptionResponse = (approveDescriptionResponseSuccess | approveDescriptionResponseError)
+
+export const getApproveDescriptionUrl = (id: string,) => {
+
+
+  
+
+  return `/api/v1/stories/${id}/approve-description`
+}
+
+export const approveDescription = async (id: string,
+    approveRefinedDescriptionRequest: ApproveRefinedDescriptionRequest, options?: RequestInit): Promise<approveDescriptionResponse> => {
+  
+  const res = await fetch(getApproveDescriptionUrl(id),
+  {      
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      approveRefinedDescriptionRequest,)
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+  
+  const data: approveDescriptionResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as approveDescriptionResponse
+}
+  
+
+
+
+export const getApproveDescriptionMutationOptions = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveDescription>>, TError,{id: string;data: ApproveRefinedDescriptionRequest}, TContext>, fetch?: RequestInit}
+): UseMutationOptions<Awaited<ReturnType<typeof approveDescription>>, TError,{id: string;data: ApproveRefinedDescriptionRequest}, TContext> => {
+
+const mutationKey = ['approveDescription'];
+const {mutation: mutationOptions, fetch: fetchOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, fetch: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof approveDescription>>, {id: string;data: ApproveRefinedDescriptionRequest}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  approveDescription(id,data,fetchOptions)
+        }
+
+
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApproveDescriptionMutationResult = NonNullable<Awaited<ReturnType<typeof approveDescription>>>
+    export type ApproveDescriptionMutationBody = ApproveRefinedDescriptionRequest
+    export type ApproveDescriptionMutationError = void
+
+    /**
+ * @summary POST /api/v1/stories/:id/approve-description — approve a pending refined description.
+ */
+export const useApproveDescription = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveDescription>>, TError,{id: string;data: ApproveRefinedDescriptionRequest}, TContext>, fetch?: RequestInit}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof approveDescription>>,
+        TError,
+        {id: string;data: ApproveRefinedDescriptionRequest},
+        TContext
+      > => {
+      return useMutation(getApproveDescriptionMutationOptions(options), queryClient);
     }
     /**
  * @summary PATCH /api/v1/stories/:id/rank — reorder via fractional indexing.

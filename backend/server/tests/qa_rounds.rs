@@ -22,8 +22,11 @@ use sqlx::PgPool;
 use tower::ServiceExt;
 use uuid::Uuid;
 
+use shared::messages::ServerToContainer;
+use tokio::sync::mpsc;
+
 use server::{
-    agents::registry::DashMapRegistry,
+    agents::registry::{ConnectionRegistry, DashMapRegistry},
     auth::{service::make_claims, types::AuthClaims},
     build_app,
     config::Config,
@@ -200,7 +203,12 @@ fn make_question(id: Uuid) -> Value {
         "id": id,
         "text": "Which approach to use?",
         "domain": "backend",
-        "options": ["Option A", "Option B"],
+        "rationale": "This decision affects the implementation approach.",
+        "options": [
+            { "label": "Option A", "pros": "Simple and proven.", "cons": "Less flexible." },
+            { "label": "Option B", "pros": "Highly flexible.", "cons": "More complex." }
+        ],
+        "recommended_option_index": 0,
         "selected_answer_index": null,
         "selected_answer_text": null,
         "answered_by": null,
@@ -465,7 +473,7 @@ async fn submit_answer_other_option(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "MIGRATOR")]
-async fn double_answer_returns_error(pool: PgPool) {
+async fn reselect_answer_in_active_round(pool: PgPool) {
     let user_id = seed_user(&pool).await;
     let org_id = seed_org(&pool, user_id).await;
     let project_id = seed_project(&pool, org_id).await;
@@ -500,7 +508,7 @@ async fn double_answer_returns_error(pool: PgPool) {
         .await
         .unwrap();
 
-    // Second answer on the same question
+    // Reselect a different answer on the same question
     let resp = app
         .oneshot(req(
             "POST",
@@ -515,9 +523,11 @@ async fn double_answer_returns_error(pool: PgPool) {
         .await
         .unwrap();
 
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(resp.status(), StatusCode::OK);
     let body = json_body(resp).await;
-    assert!(body["error"].as_str().unwrap().contains("already"));
+    let questions = body["content"]["questions"].as_array().unwrap();
+    assert_eq!(questions[0]["selected_answer_index"], 1);
+    assert_eq!(questions[0]["selected_answer_text"], "Option B");
 }
 
 #[sqlx::test(migrator = "MIGRATOR")]
@@ -1061,4 +1071,134 @@ async fn full_qa_flow_create_answer_rollback_re_answer(pool: PgPool) {
     let body = json_body(resp).await;
     let questions = body["content"]["questions"].as_array().unwrap();
     assert_eq!(questions[0]["selected_answer_text"], "Option B");
+}
+
+// ── All-answered agent notification ─────────────────────────────────────────
+
+#[sqlx::test(migrator = "MIGRATOR")]
+async fn answering_last_question_sends_answer_received_to_agent(pool: PgPool) {
+    let user_id = seed_user(&pool).await;
+    let org_id = seed_org(&pool, user_id).await;
+    let project_id = seed_project(&pool, org_id).await;
+    let story_id = seed_story(&pool, org_id, project_id, user_id).await;
+    let token = test_jwt(user_id, org_id);
+
+    // Register a container key and connect it to the registry.
+    let key_id = Uuid::now_v7();
+    sqlx::query(
+        "INSERT INTO container_api_keys (id, org_id, project_id, key_hash, label, container_mode)
+         VALUES ($1, $2, $3, 'hash', 'test-key', 'dev')",
+    )
+    .bind(key_id)
+    .bind(org_id)
+    .bind(project_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let registry = Arc::new(DashMapRegistry::new());
+    let (ws_tx, mut ws_rx) = mpsc::unbounded_channel::<ServerToContainer>();
+    registry.register(key_id, ws_tx);
+
+    let state = AppState {
+        pool: pool.clone(),
+        config: Arc::new(Config {
+            database_url: String::new(),
+            port: 0,
+            jwt_secret: TEST_SECRET.to_string(),
+            google_client_id: String::new(),
+            google_client_secret: String::new(),
+            github_client_id: String::new(),
+            github_client_secret: String::new(),
+            oauth_redirect_base_url: String::new(),
+            dev_mode: false,
+        }),
+        registry: registry.clone(),
+        broadcaster: Arc::new(SseBroadcaster::new()),
+    };
+    let app = build_app(state);
+
+    // Seed a round with 2 questions.
+    let q1 = Uuid::now_v7();
+    let q2 = Uuid::now_v7();
+    let round_id = seed_round(
+        &pool,
+        org_id,
+        story_id,
+        None,
+        "grooming",
+        1,
+        json!({
+            "questions": [make_question(q1), make_question(q2)],
+            "course_correction": null
+        }),
+    )
+    .await;
+
+    // Answer Q1 — should NOT trigger a message to the container.
+    let resp = app
+        .clone()
+        .oneshot(req(
+            "POST",
+            &format!("/api/v1/qa-rounds/{round_id}/answer"),
+            &token,
+            Some(json!({
+                "question_id": q1,
+                "selected_answer_index": 0,
+                "answer_text": "Option A"
+            })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Give the spawned task a moment, then verify no message arrived.
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert!(
+        ws_rx.try_recv().is_err(),
+        "No message should be sent after answering only Q1"
+    );
+
+    // Answer Q2 — should trigger AnswerReceived with both answers.
+    let resp = app
+        .oneshot(req(
+            "POST",
+            &format!("/api/v1/qa-rounds/{round_id}/answer"),
+            &token,
+            Some(json!({
+                "question_id": q2,
+                "selected_answer_index": 1,
+                "answer_text": "Option B"
+            })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // Wait for the spawned task to deliver the message.
+    let msg = tokio::time::timeout(std::time::Duration::from_secs(5), ws_rx.recv())
+        .await
+        .expect("timed out waiting for AnswerReceived")
+        .expect("channel closed unexpectedly");
+
+    match msg {
+        ServerToContainer::AnswerReceived {
+            round_id: rid,
+            answers,
+            context,
+        } => {
+            assert_eq!(rid, round_id);
+            assert_eq!(answers.len(), 2);
+            assert_eq!(answers[0].question_id, q1);
+            assert_eq!(answers[0].selected_answer_text, "Option A");
+            assert_eq!(answers[1].question_id, q2);
+            assert_eq!(answers[1].selected_answer_text, "Option B");
+            // Verify recovery context is populated.
+            assert_eq!(context.story_id, story_id);
+            assert_eq!(context.stage, "grooming");
+            assert_eq!(context.questions.len(), 2);
+            assert!(context.grooming_context.is_some());
+        }
+        other => panic!("expected AnswerReceived, got: {other:?}"),
+    }
 }

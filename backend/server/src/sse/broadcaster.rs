@@ -26,6 +26,15 @@ pub enum SseEvent {
         task_id: Uuid,
         story_id: Uuid,
     },
+    AnswersForwarded {
+        story_id: Uuid,
+        task_id: Option<Uuid>,
+        round_id: Uuid,
+    },
+    RefinedDescriptionReady {
+        story_id: Uuid,
+        stage: String,
+    },
 }
 
 impl SseEvent {
@@ -35,6 +44,8 @@ impl SseEvent {
             SseEvent::TaskUpdated { .. } => "TaskUpdated",
             SseEvent::NewQuestion { .. } => "NewQuestion",
             SseEvent::TaskCompleted { .. } => "TaskCompleted",
+            SseEvent::AnswersForwarded { .. } => "AnswersForwarded",
+            SseEvent::RefinedDescriptionReady { .. } => "RefinedDescriptionReady",
         }
     }
 }

@@ -6,8 +6,8 @@ use super::{
     rank,
     repo::{self, StoryRow, TaskSummaryRow},
     types::{
-        CreateStoryRequest, RankUpdateRequest, StoryError, StoryResponse, TaskSummary,
-        UpdateStoryRequest, VALID_PIPELINE_STAGES, VALID_STORY_TYPES,
+        ApproveRefinedDescriptionRequest, CreateStoryRequest, RankUpdateRequest, StoryError,
+        StoryResponse, TaskSummary, UpdateStoryRequest, VALID_PIPELINE_STAGES, VALID_STORY_TYPES,
     },
 };
 
@@ -26,6 +26,7 @@ fn to_response(row: StoryRow, tasks: Vec<TaskSummaryRow>) -> StoryResponse {
         owner_name: row.owner_name,
         rank: row.rank,
         pipeline_stage: row.pipeline_stage,
+        pending_refined_description: row.pending_refined_description,
         created_at: row.created_at,
         updated_at: row.updated_at,
         tasks: tasks
@@ -226,6 +227,47 @@ pub async fn start_story(tx: &mut OrgTx, id: Uuid) -> Result<StoryResponse, ApiE
         .ok_or(ApiError::NotFound)?;
     let tasks = repo::get_tasks_for_story(tx, id).await?;
     Ok(to_response(updated, tasks))
+}
+
+/// Approve (and optionally edit) a pending refined description.
+/// Returns `(updated story, approved_stage)` where `approved_stage` is the
+/// stage that was approved (before advancement).
+pub async fn approve_refined_description(
+    tx: &mut OrgTx,
+    id: Uuid,
+    req: ApproveRefinedDescriptionRequest,
+) -> Result<(StoryResponse, String), ApiError> {
+    let org_id = tx.auth.org_id;
+    let current = repo::get_story(tx, id, org_id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+
+    let pending = current
+        .pending_refined_description
+        .ok_or_else(|| ApiError::BadRequest("No pending refined description to approve".into()))?;
+
+    let current_stage = current.pipeline_stage.as_deref().unwrap_or("grooming");
+
+    let approved_stage = current_stage.to_string();
+
+    let next_stage = match current_stage {
+        "grooming" => "planning",
+        "planning" => "decomposition",
+        _ => {
+            return Err(ApiError::BadRequest(format!(
+                "Cannot approve description in stage '{current_stage}'"
+            )));
+        }
+    };
+
+    let final_description = req.description.unwrap_or(pending);
+
+    let updated = repo::approve_refined_description(tx, id, org_id, &final_description, next_stage)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+
+    let tasks = repo::get_tasks_for_story(tx, id).await?;
+    Ok((to_response(updated, tasks), approved_stage))
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────

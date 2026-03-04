@@ -18,6 +18,7 @@ pub struct StoryRow {
     pub owner_id: Uuid,
     pub rank: String,
     pub pipeline_stage: Option<String>,
+    pub pending_refined_description: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub owner_name: String,
@@ -36,7 +37,8 @@ pub struct TaskSummaryRow {
 
 const STORY_COLUMNS: &str = r#"
     id, org_id, project_id, title, description, story_type,
-    status, owner_id, rank, pipeline_stage, created_at, updated_at,
+    status, owner_id, rank, pipeline_stage, pending_refined_description,
+    created_at, updated_at,
     COALESCE((SELECT display_name FROM users WHERE users.id = owner_id), '') as owner_name
 "#;
 
@@ -208,6 +210,53 @@ pub async fn update_rank(
     ))
     .bind(id)
     .bind(rank)
+    .bind(org_id)
+    .fetch_optional(&mut **tx)
+    .await
+}
+
+/// Store the AI-generated refined description pending human approval.
+pub async fn set_pending_refined_description(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    id: Uuid,
+    org_id: Uuid,
+    text: &str,
+) -> Result<Option<StoryRow>, sqlx::Error> {
+    sqlx::query_as::<_, StoryRow>(&format!(
+        "UPDATE stories SET
+             pending_refined_description = $2,
+             updated_at = now()
+         WHERE id = $1 AND org_id = $3 AND deleted_at IS NULL
+         RETURNING {STORY_COLUMNS}"
+    ))
+    .bind(id)
+    .bind(text)
+    .bind(org_id)
+    .fetch_optional(&mut **tx)
+    .await
+}
+
+/// Approve a refined description: copy it to `description`, clear
+/// `pending_refined_description`, and advance `pipeline_stage`.
+pub async fn approve_refined_description(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    id: Uuid,
+    org_id: Uuid,
+    final_description: &str,
+    new_stage: &str,
+) -> Result<Option<StoryRow>, sqlx::Error> {
+    sqlx::query_as::<_, StoryRow>(&format!(
+        "UPDATE stories SET
+             description = $2,
+             pending_refined_description = NULL,
+             pipeline_stage = $3,
+             updated_at = now()
+         WHERE id = $1 AND org_id = $4 AND deleted_at IS NULL
+         RETURNING {STORY_COLUMNS}"
+    ))
+    .bind(id)
+    .bind(final_description)
+    .bind(new_stage)
     .bind(org_id)
     .fetch_optional(&mut **tx)
     .await

@@ -2,7 +2,10 @@ use uuid::Uuid;
 
 use shared::{
     messages::{ContainerToServer, ServerToContainer},
-    types::{Answer, GroomingContext, PauseQuestion, PlanningContext, QaRoundContent, TaskContext},
+    types::{
+        Answer, AnswerContext, GroomingContext, PauseQuestion, PlanningContext, QaRoundContent,
+        Question, TaskContext,
+    },
 };
 
 use crate::{
@@ -48,6 +51,11 @@ pub async fn handle_message(state: &AppState, key_info: &ContainerKeyInfo, msg: 
         ContainerToServer::TaskFailed { task_id, error } => {
             on_task_failed(state, key_info, task_id, &error).await
         }
+        ContainerToServer::RefinedDescription {
+            story_id,
+            stage,
+            refined_description,
+        } => on_refined_description(state, key_info, story_id, &stage, &refined_description).await,
         ContainerToServer::StatusUpdate {
             task_id,
             status_text,
@@ -232,7 +240,17 @@ async fn on_task_paused(
             id: new_id(),
             text: question.text,
             domain: question.domain,
-            options: question.options,
+            rationale: question.rationale,
+            options: question
+                .options
+                .into_iter()
+                .map(|o| crate::qa::types::QaQuestionOption {
+                    label: o.label,
+                    pros: o.pros,
+                    cons: o.cons,
+                })
+                .collect(),
+            recommended_option_index: question.recommended_option_index,
             selected_answer_index: None,
             selected_answer_text: None,
             answered_by: None,
@@ -431,6 +449,33 @@ async fn on_status_update(
     Ok(())
 }
 
+async fn on_refined_description(
+    state: &AppState,
+    key_info: &ContainerKeyInfo,
+    story_id: Uuid,
+    stage: &str,
+    refined_description: &str,
+) -> Result<(), ApiError> {
+    let org_id = key_info.org_id;
+    let mut tx = OrgTx::begin(&state.pool, container_auth(key_info)).await?;
+
+    story_repo::set_pending_refined_description(&mut tx, story_id, org_id, refined_description)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+
+    tx.commit().await?;
+
+    state.broadcaster.broadcast(
+        org_id,
+        SseEvent::RefinedDescriptionReady {
+            story_id,
+            stage: stage.to_string(),
+        },
+    );
+
+    Ok(())
+}
+
 // ── Outgoing message triggers ─────────────────────────────────────────────────
 
 /// Send `StartGrooming` to the project's connected container.
@@ -468,20 +513,79 @@ pub async fn send_start_planning(
 }
 
 /// Forward completed answers to the container that originated the QA round.
-/// Called by the Q&A service after all questions in a round have been answered.
+/// Includes full recovery context so the agent can process the answers even
+/// after a restart (no in-memory QA session).
+#[allow(clippy::too_many_arguments)]
 pub async fn send_answer_received(
     state: &AppState,
     project_id: Uuid,
+    org_id: Uuid,
+    story_id: Uuid,
+    stage: &str,
     round_id: Uuid,
     answers: Vec<Answer>,
+    questions: Vec<Question>,
 ) {
-    if let Some(key_id) = find_connected_key(&state.pool, state.registry.as_ref(), project_id).await
-    {
-        let _ = state.registry.send_to(
-            key_id,
-            ServerToContainer::AnswerReceived { round_id, answers },
-        );
-    }
+    let key_id = match find_connected_key(&state.pool, state.registry.as_ref(), project_id).await {
+        Some(id) => id,
+        None => return,
+    };
+
+    // Build recovery context: prior decisions + grooming/planning context.
+    let prior_decisions = match build_prior_decisions(&state.pool, org_id, story_id, stage).await {
+        Ok(d) => d,
+        Err(e) => {
+            tracing::error!(%round_id, %e, "failed to build prior decisions for AnswerReceived");
+            vec![]
+        }
+    };
+
+    let (grooming_context, planning_context) = match stage {
+        "grooming" => {
+            let ctx = build_grooming_context(
+                &state.pool,
+                org_id,
+                project_id,
+                &fetch_story_description(&state.pool, org_id, story_id)
+                    .await
+                    .unwrap_or_default(),
+            )
+            .await
+            .ok();
+            (ctx, None)
+        }
+        "planning" => {
+            let ctx = build_planning_context(
+                &state.pool,
+                org_id,
+                project_id,
+                story_id,
+                &fetch_story_description(&state.pool, org_id, story_id)
+                    .await
+                    .unwrap_or_default(),
+            )
+            .await
+            .ok();
+            (None, ctx)
+        }
+        _ => (None, None),
+    };
+
+    let _ = state.registry.send_to(
+        key_id,
+        ServerToContainer::AnswerReceived {
+            round_id,
+            answers,
+            context: AnswerContext {
+                story_id,
+                stage: stage.to_string(),
+                questions,
+                prior_decisions,
+                grooming_context,
+                planning_context,
+            },
+        },
+    );
 }
 
 /// Send `StartTask` to the project's dev container and return the generated session ID.
@@ -524,6 +628,27 @@ pub async fn send_resume_task(
                 task_id,
                 session_id,
                 answer,
+            },
+        );
+    }
+}
+
+/// Send `DescriptionApproved` to the project's connected container.
+pub async fn send_description_approved(
+    state: &AppState,
+    project_id: Uuid,
+    story_id: Uuid,
+    stage: &str,
+    description: &str,
+) {
+    if let Some(key_id) = find_connected_key(&state.pool, state.registry.as_ref(), project_id).await
+    {
+        let _ = state.registry.send_to(
+            key_id,
+            ServerToContainer::DescriptionApproved {
+                story_id,
+                stage: stage.to_string(),
+                description: description.to_string(),
             },
         );
     }
@@ -659,7 +784,17 @@ fn into_qa_questions(questions: Vec<shared::types::Question>) -> Vec<QaQuestion>
             id: q.id,
             text: q.text,
             domain: q.domain,
-            options: q.options,
+            rationale: q.rationale,
+            options: q
+                .options
+                .into_iter()
+                .map(|o| crate::qa::types::QaQuestionOption {
+                    label: o.label,
+                    pros: o.pros,
+                    cons: o.cons,
+                })
+                .collect(),
+            recommended_option_index: q.recommended_option_index,
             selected_answer_index: None,
             selected_answer_text: None,
             answered_by: None,
@@ -690,6 +825,41 @@ async fn find_connected_key(
 
     let ids: Vec<Uuid> = rows.into_iter().map(|(id,)| id).collect();
     find_key_in_registry(&ids, registry)
+}
+
+/// Fetch the story description directly (pool-level, no RLS) for enriching messages.
+async fn fetch_story_description(
+    pool: &sqlx::PgPool,
+    org_id: Uuid,
+    story_id: Uuid,
+) -> Result<String, ApiError> {
+    let row: (String,) = sqlx::query_as(
+        "SELECT description FROM stories WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL",
+    )
+    .bind(story_id)
+    .bind(org_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(row.0)
+}
+
+/// Build `QaDecision`s from all *answered* rounds in the same story+stage scope,
+/// used as recovery context in `send_answer_received`.
+async fn build_prior_decisions(
+    pool: &sqlx::PgPool,
+    org_id: Uuid,
+    story_id: Uuid,
+    stage: &str,
+) -> Result<Vec<shared::types::QaDecision>, ApiError> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("SELECT set_config('app.org_id', $1, true)")
+        .bind(org_id.to_string())
+        .execute(&mut *tx)
+        .await?;
+    let rounds = qa_repo::list_rounds(&mut tx, org_id, Some(story_id), None, Some(stage)).await?;
+    let decisions = extract_decisions(&rounds)?;
+    tx.commit().await?;
+    Ok(decisions)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -725,7 +895,20 @@ mod tests {
             id,
             text: "What?".into(),
             domain: "design".into(),
-            options: vec!["A".into(), "B".into()],
+            rationale: "Important for design.".into(),
+            options: vec![
+                shared::types::QuestionOption {
+                    label: "A".into(),
+                    pros: "Good.".into(),
+                    cons: "Bad.".into(),
+                },
+                shared::types::QuestionOption {
+                    label: "B".into(),
+                    pros: "Fast.".into(),
+                    cons: "Slow.".into(),
+                },
+            ],
+            recommended_option_index: 0,
         };
         let result = into_qa_questions(vec![q]);
         assert_eq!(result.len(), 1);
@@ -733,7 +916,10 @@ mod tests {
         assert_eq!(qa.id, id);
         assert_eq!(qa.text, "What?");
         assert_eq!(qa.domain, "design");
-        assert_eq!(qa.options, vec!["A", "B"]);
+        assert_eq!(qa.rationale, "Important for design.");
+        assert_eq!(qa.options.len(), 2);
+        assert_eq!(qa.options[0].label, "A");
+        assert_eq!(qa.recommended_option_index, 0);
         assert!(qa.selected_answer_index.is_none());
         assert!(qa.selected_answer_text.is_none());
         assert!(qa.answered_by.is_none());

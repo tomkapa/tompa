@@ -34,6 +34,11 @@ pub enum DispatchMessage {
         task_id: Option<Uuid>,
         sufficient: bool,
     },
+    RefinedDescriptionReady {
+        story_id: Uuid,
+        stage: String,
+        refined_description: String,
+    },
     // From Claude Code (implementation mode)
     TaskPaused {
         task_id: Uuid,
@@ -142,8 +147,22 @@ impl Dispatcher {
                 task_id,
                 sufficient,
             } => {
-                // T20 will implement full convergence handling
+                // Fallback stub — only reached when refinement LLM call fails.
                 info!(%story_id, ?task_id, %sufficient, "ConvergenceResult received (stub)");
+            }
+            DispatchMessage::RefinedDescriptionReady {
+                story_id,
+                stage,
+                refined_description,
+            } => {
+                self.send_to_ws(WsClientMessage::Send(
+                    ContainerToServer::RefinedDescription {
+                        story_id,
+                        stage,
+                        refined_description,
+                    },
+                ))
+                .await;
             }
             DispatchMessage::TaskPaused { task_id, question } => {
                 self.send_to_ws(WsClientMessage::Send(ContainerToServer::TaskPaused {
@@ -250,9 +269,17 @@ impl Dispatcher {
                 self.send_to_claude(ClaudeCodeMessage::StartPlanning { story_id, context })
                     .await;
             }
-            ServerToContainer::AnswerReceived { round_id, answers } => {
-                self.send_to_claude(ClaudeCodeMessage::AnswerReceived { round_id, answers })
-                    .await;
+            ServerToContainer::AnswerReceived {
+                round_id,
+                answers,
+                context,
+            } => {
+                self.send_to_claude(ClaudeCodeMessage::AnswerReceived {
+                    round_id,
+                    answers,
+                    context,
+                })
+                .await;
             }
             ServerToContainer::StartTask {
                 story_id,
@@ -294,6 +321,18 @@ impl Dispatcher {
                     session_id,
                     worktree,
                     answer,
+                })
+                .await;
+            }
+            ServerToContainer::DescriptionApproved {
+                story_id,
+                stage,
+                description,
+            } => {
+                self.send_to_claude(ClaudeCodeMessage::DescriptionApproved {
+                    story_id,
+                    stage,
+                    description,
                 })
                 .await;
             }
@@ -641,5 +680,38 @@ mod tests {
             DispatchMessage::ConvergenceResult { sufficient, .. } => assert!(sufficient),
             _ => panic!("wrong variant"),
         }
+    }
+
+    #[tokio::test]
+    async fn refined_description_ready_routes_to_ws() {
+        let (ws_tx, mut ws_rx) = mpsc::channel(4);
+        let mut d = make_dispatcher(Some(ws_tx), None);
+        d.handle(DispatchMessage::RefinedDescriptionReady {
+            story_id: Uuid::now_v7(),
+            stage: "grooming".into(),
+            refined_description: "Refined text".into(),
+        })
+        .await;
+        let msg = ws_rx.try_recv().expect("expected a ws message");
+        assert!(matches!(
+            msg,
+            WsClientMessage::Send(ContainerToServer::RefinedDescription { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn description_approved_routes_to_claude() {
+        let (claude_tx, mut claude_rx) = mpsc::channel(4);
+        let mut d = make_dispatcher(None, Some(claude_tx));
+        d.handle(DispatchMessage::FromServer(
+            ServerToContainer::DescriptionApproved {
+                story_id: Uuid::now_v7(),
+                stage: "planning".into(),
+                description: "Approved description".into(),
+            },
+        ))
+        .await;
+        let msg = claude_rx.try_recv().expect("expected a claude message");
+        assert!(matches!(msg, ClaudeCodeMessage::DescriptionApproved { .. }));
     }
 }

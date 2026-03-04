@@ -10,7 +10,6 @@ interface QaThreadProps {
   stage?: string
   stages?: string[]
   onAnswer: (questionId: string, answerIndex: number | null, answerText: string | null) => void
-  onRollback?: (roundId: string) => void
   onCourseCorrect: (text: string) => void
   onStageChange?: (stage: string) => void
 }
@@ -20,7 +19,6 @@ function QaThread({
   stage,
   stages,
   onAnswer,
-  onRollback,
   onCourseCorrect,
   onStageChange,
 }: QaThreadProps) {
@@ -96,33 +94,35 @@ function QaThread({
       </div>
 
       {/* Scrollable content */}
-      <div ref={contentRef} className="relative flex-1 overflow-y-auto">
-        <div className="flex flex-col gap-5 p-5">
-          {rounds.map((round) => (
-            <React.Fragment key={round.id}>
-              {/* Round label divider */}
-              <div className="flex items-center gap-2">
-                <div className="h-px flex-1 bg-border" />
-                <span className="text-[11px] font-medium leading-[1.2] text-muted-foreground">
-                  Round {round.roundNumber}
-                </span>
-                <div className="h-px flex-1 bg-border" />
-              </div>
+      <div className="relative flex-1 overflow-hidden">
+        <div ref={contentRef} className="h-full overflow-y-auto">
+          <div className="flex flex-col gap-5 p-5">
+            {rounds.map((round) => (
+              <React.Fragment key={round.id}>
+                {/* Round label divider */}
+                <div className="flex items-center gap-2">
+                  <div className="h-px flex-1 bg-border" />
+                  <span className="text-[11px] font-medium leading-[1.2] text-muted-foreground">
+                    Round {round.roundNumber}
+                  </span>
+                  <div className="h-px flex-1 bg-border" />
+                </div>
 
-              {/* Questions in round */}
-              {round.questions.map((q) => (
-                <QuestionBlock
-                  key={q.id}
-                  question={q}
-                  onAnswer={onAnswer}
-                  onRollback={onRollback ? () => onRollback(round.id) : undefined}
-                  isRollbackPoint={!!round.isRollbackPoint}
-                  answered={isQuestionAnswered(q)}
-                />
-              ))}
-            </React.Fragment>
-          ))}
-          <div ref={bottomRef} />
+                {/* Questions in round */}
+                {round.questions.map((q) => (
+                  <QuestionBlock
+                    key={q.id}
+                    question={q}
+                    onAnswer={onAnswer}
+                    isRollbackPoint={!!round.isRollbackPoint}
+                    answered={isQuestionAnswered(q)}
+                    locked={round.status !== 'active'}
+                  />
+                ))}
+              </React.Fragment>
+            ))}
+            <div ref={bottomRef} />
+          </div>
         </div>
 
         {/* Floating new question indicator */}

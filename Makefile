@@ -1,7 +1,7 @@
 # Load .env for targets that need it (run in shell that sources .env)
 export
 
-.PHONY: run-backend run-agent run-frontend migrate backend-check frontend-check help
+.PHONY: run-backend run-agent run-frontend migrate backend-check frontend-check api-contract-update help
 
 help:
 	@echo "Usage: make [target]"
@@ -12,6 +12,7 @@ help:
 	@echo "  migrate       - Run database migrations"
 	@echo "  backend-check - Format, clippy, test backend"
 	@echo "  frontend-check - Typecheck, lint, test frontend"
+	@echo "  api-contract-update - Regenerate OpenAPI spec and TypeScript API client"
 
 run-backend:
 	@set -a && [ -f .env ] && . ./.env && set +a && cd backend && cargo run --bin server
@@ -35,3 +36,6 @@ frontend-check:
 	cd frontend && bun run typecheck
 	cd frontend && bun run lint
 	cd frontend && bun run test
+
+api-contract-update:
+	cd frontend && SQLX_OFFLINE=true bun run generate-api

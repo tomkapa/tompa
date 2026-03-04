@@ -11,7 +11,8 @@ use crate::{auth::middleware::require_auth, db::OrgTx, errors::ApiError, state::
 use super::{
     service,
     types::{
-        CreateStoryRequest, ListStoriesParams, RankUpdateRequest, StoryResponse, UpdateStoryRequest,
+        ApproveRefinedDescriptionRequest, CreateStoryRequest, ListStoriesParams, RankUpdateRequest,
+        StoryResponse, UpdateStoryRequest,
     },
 };
 
@@ -24,6 +25,10 @@ pub fn router(state: AppState) -> Router<AppState> {
         )
         .route("/api/v1/stories/{id}/rank", patch(update_rank))
         .route("/api/v1/stories/{id}/start", post(start_story))
+        .route(
+            "/api/v1/stories/{id}/approve-description",
+            post(approve_description),
+        )
         .route_layer(axum::middleware::from_fn_with_state(state, require_auth))
 }
 
@@ -241,6 +246,88 @@ pub(crate) async fn start_story(
                 Err(e) => tracing::error!(%story_id, %e, "failed to build grooming context"),
             }
         }
+    });
+
+    Ok(Json(story))
+}
+
+/// POST /api/v1/stories/:id/approve-description — approve a pending refined description.
+#[utoipa::path(
+    post,
+    path = "/api/v1/stories/{id}/approve-description",
+    tag = "stories",
+    params(
+        ("id" = Uuid, Path, description = "Story ID"),
+    ),
+    request_body = ApproveRefinedDescriptionRequest,
+    responses(
+        (status = 200, description = "Description approved and pipeline advanced", body = StoryResponse),
+        (status = 400, description = "No pending description or invalid stage"),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Story not found"),
+    ),
+    security(("cookieAuth" = []))
+)]
+pub(crate) async fn approve_description(
+    State(state): State<AppState>,
+    mut tx: OrgTx,
+    Path(id): Path<Uuid>,
+    Json(req): Json<ApproveRefinedDescriptionRequest>,
+) -> Result<Json<StoryResponse>, ApiError> {
+    let org_id = tx.auth.org_id;
+    let (story, approved_stage) = service::approve_refined_description(&mut tx, id, req).await?;
+    tx.commit().await?;
+
+    let story_id = story.id;
+    let project_id = story.project_id;
+    let description = story.description.clone();
+    let s = state.clone();
+
+    tokio::spawn(async move {
+        // Notify frontend of the story update.
+        s.broadcaster.broadcast(
+            org_id,
+            crate::sse::broadcaster::SseEvent::StoryUpdated {
+                story_id,
+                fields: vec![
+                    "description".into(),
+                    "pipeline_stage".into(),
+                    "pending_refined_description".into(),
+                ],
+            },
+        );
+
+        // Send DescriptionApproved to the agent.
+        crate::agents::service::send_description_approved(
+            &s,
+            project_id,
+            story_id,
+            &approved_stage,
+            &description,
+        )
+        .await;
+
+        // If grooming was approved, start planning.
+        if approved_stage == "grooming" {
+            match crate::agents::service::build_planning_context(
+                &s.pool,
+                org_id,
+                project_id,
+                story_id,
+                &description,
+            )
+            .await
+            {
+                Ok(ctx) => {
+                    crate::agents::service::send_start_planning(&s, project_id, story_id, ctx)
+                        .await;
+                }
+                Err(e) => {
+                    tracing::error!(%story_id, %e, "failed to build planning context after approval")
+                }
+            }
+        }
+        // If planning was approved, the agent handles decomposition on receipt of DescriptionApproved.
     });
 
     Ok(Json(story))

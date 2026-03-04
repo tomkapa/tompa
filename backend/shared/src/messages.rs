@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::types::{
-    Answer, GroomingContext, PauseQuestion, PlanningContext, ProposedTask, QaRoundContent,
-    TaskContext,
+    Answer, AnswerContext, GroomingContext, PauseQuestion, PlanningContext, ProposedTask,
+    QaRoundContent, TaskContext,
 };
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -20,6 +20,7 @@ pub enum ServerToContainer {
     AnswerReceived {
         round_id: Uuid,
         answers: Vec<Answer>,
+        context: AnswerContext,
     },
     StartTask {
         story_id: Uuid,
@@ -34,6 +35,11 @@ pub enum ServerToContainer {
     },
     CancelTask {
         task_id: Uuid,
+    },
+    DescriptionApproved {
+        story_id: Uuid,
+        stage: String,
+        description: String,
     },
     Ping,
 }
@@ -61,6 +67,11 @@ pub enum ContainerToServer {
     TaskFailed {
         task_id: Uuid,
         error: String,
+    },
+    RefinedDescription {
+        story_id: Uuid,
+        stage: String,
+        refined_description: String,
     },
     StatusUpdate {
         task_id: Uuid,
