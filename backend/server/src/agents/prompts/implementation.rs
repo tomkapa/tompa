@@ -1,30 +1,34 @@
-use shared::types::{KnowledgeEntry, QaDecision, TaskContext};
+use shared::types::{KnowledgeEntry, QaDecision};
 
-/// Build the prompt passed to Claude Code when starting or resuming implementation.
-///
-/// The prompt instructs Claude Code on what to implement and how to signal
-/// pause/completion back to the supervisor via stdout markers.
-pub fn build_implementation_prompt(context: &TaskContext) -> String {
-    let knowledge = fmt_all_knowledge(&context.knowledge);
-    let story_decisions = fmt_decisions(&context.story_decisions);
-    let sibling_decisions = fmt_decisions(&context.sibling_decisions);
+/// Returns `(system_prompt, prompt)`.
+pub fn build_implementation_prompt(
+    task_description: &str,
+    knowledge: &[KnowledgeEntry],
+    story_decisions: &[QaDecision],
+    sibling_decisions: &[QaDecision],
+) -> (String, String) {
+    let knowledge_text = fmt_all_knowledge(knowledge);
+    let story_text = fmt_decisions(story_decisions);
+    let sibling_text = fmt_decisions(sibling_decisions);
 
-    format!(
+    let system =
         r#"You are implementing a task as part of a larger story. Follow all decisions exactly.
 
 ## Communication Protocol
 When you need a human decision before continuing, output EXACTLY this on its own line:
 [DECISION_NEEDED]
 Then on the VERY NEXT line output a JSON object (no whitespace before it):
-{{"text":"Your question?","domain":"development","options":["Option A","Option B"]}}
+{"text":"Your question?","domain":"development","options":["Option A","Option B"]}
 
 When the task is fully implemented and committed, output EXACTLY this on its own line:
 [COMPLETED]<commit_sha>
 
 Output all other progress information as plain text lines (the supervisor forwards them as \
-status updates).
+status updates)."#
+            .to_owned();
 
-## Knowledge Base
+    let prompt = format!(
+        r#"## Knowledge Base
 {knowledge}
 
 ## Story-Level Decisions
@@ -39,15 +43,17 @@ status updates).
 Implement the task now. Follow all decisions above. Ask via [DECISION_NEEDED] if and only \
 if you encounter an ambiguity not covered by the decisions. Do not ask about anything already \
 decided. When done, commit your changes and output [COMPLETED]<commit_sha>."#,
-        knowledge = knowledge,
-        story_decisions = story_decisions,
-        sibling_decisions = if sibling_decisions.is_empty() {
+        knowledge = knowledge_text,
+        story_decisions = story_text,
+        sibling_decisions = if sibling_text.is_empty() {
             "None yet.".into()
         } else {
-            sibling_decisions
+            sibling_text
         },
-        task = context.task_description,
-    )
+        task = task_description,
+    );
+
+    (system, prompt)
 }
 
 fn fmt_all_knowledge(knowledge: &[KnowledgeEntry]) -> String {

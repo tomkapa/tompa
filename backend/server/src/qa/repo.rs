@@ -164,6 +164,30 @@ pub async fn update_round_content(
     .await
 }
 
+/// Atomically append `new_questions` (a JSON array) to `content->'questions'`
+/// in an existing round.  Uses a single UPDATE so concurrent role responses
+/// don't overwrite each other.
+pub async fn append_questions(
+    pool: &sqlx::PgPool,
+    round_id: Uuid,
+    org_id: Uuid,
+    new_questions: &serde_json::Value,
+) -> Result<Option<QaRoundRow>, sqlx::Error> {
+    sqlx::query_as::<_, QaRoundRow>(&format!(
+        "UPDATE qa_rounds
+            SET content     = jsonb_set(content, '{{questions}}',
+                                        (content -> 'questions') || $3::jsonb),
+                updated_at  = now()
+          WHERE id = $1 AND org_id = $2
+          RETURNING {ROUND_COLUMNS}"
+    ))
+    .bind(round_id)
+    .bind(org_id)
+    .bind(new_questions)
+    .fetch_optional(pool)
+    .await
+}
+
 /// Set all rounds with round_number > given number (same story/task/stage)
 /// to status = 'superseded'.
 pub async fn supersede_rounds_after(

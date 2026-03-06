@@ -1,13 +1,17 @@
 # Load .env for targets that need it (run in shell that sources .env)
 export
 
-.PHONY: run-backend run-agent run-frontend migrate backend-check frontend-check api-contract-update help
+AGENT_IMAGE ?= tompa-agent
+
+.PHONY: run-backend run-agent build-agent run-frontend migrate backend-check frontend-check api-contract-update help
 
 help:
 	@echo "Usage: make [target]"
 	@echo ""
 	@echo "  run-backend   - Start backend server (requires .env)"
-	@echo "  run-agent     - Start agent (requires .env)"
+	@echo "  build-agent   - Build agent Docker image"
+	@echo "  run-agent     - Build and run agent in Docker (requires .env)"
+	@echo "                  Note: set AGENT_SERVER_URL=ws://host.docker.internal:3000 in .env"
 	@echo "  run-frontend  - Start frontend dev server"
 	@echo "  migrate       - Run database migrations"
 	@echo "  backend-check - Format, clippy, test backend"
@@ -17,8 +21,17 @@ help:
 run-backend:
 	@set -a && [ -f .env ] && . ./.env && set +a && cd backend && cargo run --bin server
 
-run-agent:
-	@set -a && [ -f .env ] && . ./.env && set +a && cd backend && cargo run --bin agent
+build-agent:
+	docker buildx inspect tompa-builder > /dev/null 2>&1 || docker buildx create --name tompa-builder --driver docker-container
+	docker buildx build --builder tompa-builder --load -t $(AGENT_IMAGE) -f backend/agent/Dockerfile backend
+
+run-agent: build-agent
+	docker run --rm -it \
+		--env-file .env \
+		--add-host=host.docker.internal:host-gateway \
+		-p 3001:3001 \
+		-v $(CURDIR)/agent-claude:/root/.claude \
+		$(AGENT_IMAGE)
 
 run-frontend:
 	cd frontend && bun run dev

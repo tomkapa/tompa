@@ -1,4 +1,3 @@
-pub mod convergence;
 pub mod description_refinement;
 pub mod grooming;
 pub mod implementation;

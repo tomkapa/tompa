@@ -15,36 +15,28 @@ pub async fn create_pool(database_url: &str) -> PgPool {
 }
 
 /// Generates a new UUIDv7 identifier (time-ordered, application-side).
-///
-/// All primary keys are generated here rather than in the database so that
-/// the ID is known before the INSERT, making it easy to return from handlers
-/// without a second round-trip.
 pub fn new_id() -> Uuid {
     Uuid::now_v7()
 }
 
-/// A transaction with RLS context already set.
+/// A transaction with the RLS `app.org_id` context already set.
 ///
-/// Wraps `sqlx::Transaction<'static, Postgres>` and an `AuthContext`.
 /// Implements `Deref`/`DerefMut` to the inner transaction so repo functions
 /// accepting `&mut Transaction<'_, Postgres>` work unchanged.
 pub struct OrgTx {
     tx: Transaction<'static, Postgres>,
-    pub auth: AuthContext,
+    pub org_id: Uuid,
 }
 
 impl OrgTx {
     /// Begin a transaction and set `app.org_id` for RLS.
-    ///
-    /// Use this in non-HTTP contexts (e.g. WebSocket handlers) where the
-    /// `FromRequestParts` extractor cannot be used.
-    pub async fn begin(pool: &PgPool, auth: AuthContext) -> Result<Self, ApiError> {
+    pub async fn begin(pool: &PgPool, org_id: Uuid) -> Result<Self, ApiError> {
         let mut tx = pool.begin().await?;
         sqlx::query("SELECT set_config('app.org_id', $1, true)")
-            .bind(auth.org_id.to_string())
+            .bind(org_id.to_string())
             .execute(&mut *tx)
             .await?;
-        Ok(Self { tx, auth })
+        Ok(Self { tx, org_id })
     }
 
     /// Commit the underlying transaction.
@@ -71,15 +63,6 @@ impl DerefMut for OrgTx {
 /// Axum extractor: begins a transaction with RLS context from the authenticated user.
 ///
 /// Requires `require_auth` middleware to have inserted `AuthContext` into extensions.
-///
-/// Usage in handlers:
-/// ```rust,ignore
-/// async fn handler(mut tx: OrgTx, ...) -> Result<Json<T>, ApiError> {
-///     let result = service::do_thing(&mut tx, ...).await?;
-///     tx.commit().await?;
-///     Ok(Json(result))
-/// }
-/// ```
 impl FromRequestParts<AppState> for OrgTx {
     type Rejection = ApiError;
 
@@ -92,6 +75,6 @@ impl FromRequestParts<AppState> for OrgTx {
             .get::<AuthContext>()
             .cloned()
             .ok_or(ApiError::Unauthorized)?;
-        Self::begin(&state.pool, auth).await
+        Self::begin(&state.pool, auth.org_id).await
     }
 }

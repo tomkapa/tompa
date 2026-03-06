@@ -27,12 +27,22 @@ import {
   useCreateProject,
   getListProjectsQueryKey,
 } from '@/api/generated/projects/projects'
+import { useListKeys } from '@/api/generated/container-keys/container-keys'
 import type { StoryResponse } from '@/api/generated/tompaAPI.schemas'
 import { useAuth } from '@/hooks/use-auth'
 import { useSSE } from '@/hooks/use-sse'
 import { useSSEStore } from '@/stores/sse-store'
 import { useToastStore } from '@/stores/toast-store'
 import { ProjectSettings } from '@/features/settings/project-settings'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from '@/components/ui/dialog'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -193,6 +203,7 @@ export function AppLayout() {
   const [openFilter, setOpenFilter] = React.useState<'status' | 'type' | null>(null)
   const [filterStatus, setFilterStatus] = React.useState<Set<string>>(new Set())
   const [filterType, setFilterType] = React.useState<Set<string>>(new Set())
+  const [agentNotConfiguredOpen, setAgentNotConfiguredOpen] = React.useState(false)
   const filterBarRef = React.useRef<HTMLDivElement>(null)
 
   React.useEffect(() => {
@@ -224,9 +235,26 @@ export function AppLayout() {
   )
   const projectId = activeProject?.id ?? ''
 
+  // ── Container keys (to detect whether agent is configured) ────────────────
+  const { data: keysResp } = useListKeys(
+    { project_id: projectId },
+    { query: { enabled: !!projectId } },
+  )
+  const hasAgentConfigured = React.useMemo(() => {
+    if (keysResp?.status !== 200) return false
+    return keysResp.data.some((k) => !k.revoked_at)
+  }, [keysResp])
+
   // ── SSE connection ─────────────────────────────────────────────────────────
   useSSE(projectId)
   const hasNotification = useSSEStore((s) => s.hasNotification)
+
+  // Close agent dialog when navigating to settings
+  React.useEffect(() => {
+    if (isSettingsPage) {
+      setAgentNotConfiguredOpen(false)
+    }
+  }, [isSettingsPage])
 
   // Redirect to first project if current slug is "default" and projects are loaded
   React.useEffect(() => {
@@ -389,6 +417,10 @@ export function AppLayout() {
   }
 
   function handleStartStory(storyId: string) {
+    if (!hasAgentConfigured) {
+      setAgentNotConfiguredOpen(true)
+      return
+    }
     startStoryMutation.mutate({ id: storyId })
   }
 
@@ -659,6 +691,35 @@ export function AppLayout() {
         onRequestExpansion={handleCreateStory}
         onApprove={(data) => handleCreateStory(data)}
       />
+
+      {/* Agent not configured warning */}
+      <Dialog open={agentNotConfiguredOpen} onOpenChange={setAgentNotConfiguredOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Agent not configured</DialogTitle>
+            <DialogDescription>
+              No container agent is set up for this project. You need to configure an agent before
+              starting a story — it handles grooming, planning, and implementation automatically.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="ghost">Cancel</Button>
+            </DialogClose>
+            <Button
+              onClick={() => {
+                setAgentNotConfiguredOpen(false)
+                void navigate({
+                  to: '/projects/$projectSlug/settings',
+                  params: { projectSlug },
+                })
+              }}
+            >
+              Go to Settings
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

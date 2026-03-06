@@ -12,6 +12,10 @@ pub enum ProjectError {
     NameRequired,
     #[error("A project with that name already exists")]
     NameTaken,
+    #[error("The business analyst role is always required")]
+    BusinessAnalystRequired,
+    #[error("Invalid grooming role ID")]
+    InvalidRoleId,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -26,6 +30,7 @@ pub struct UpdateProjectRequest {
     pub name: Option<String>,
     pub description: Option<String>,
     pub github_repo_url: Option<String>,
+    pub grooming_roles: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -41,6 +46,7 @@ pub struct ProjectResponse {
     pub name: String,
     pub description: Option<String>,
     pub github_repo_url: Option<String>,
+    pub grooming_roles: Vec<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { DomainTag } from '@/components/ui/domain-tag'
 import { RollbackBadge } from '@/components/ui/rollback-badge'
@@ -26,6 +27,7 @@ function QuestionBlock({
     answered && question.answeredIndex == null && question.answeredText != null
   )
   const [otherValue, setOtherValue] = React.useState(question.answeredText ?? '')
+  const [rationaleExpanded, setRationaleExpanded] = React.useState(true)
 
   const isAnswered = answered
 
@@ -66,13 +68,29 @@ function QuestionBlock({
           {isRollbackPoint && <RollbackBadge />}
         </div>
 
-        {/* Question text */}
-        <p className="text-[15px] font-medium leading-[1.4] text-foreground">
-          {question.text}
-        </p>
+        {/* Question text + rationale toggle */}
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-[15px] font-medium leading-[1.4] text-foreground">
+            {question.text}
+          </p>
+          {question.rationale && (
+            <button
+              type="button"
+              onClick={() => setRationaleExpanded((prev) => !prev)}
+              className="mt-0.5 shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+              aria-label={rationaleExpanded ? 'Collapse explanation' : 'Expand explanation'}
+            >
+              {rationaleExpanded ? (
+                <ChevronUp className="h-4 w-4" />
+              ) : (
+                <ChevronDown className="h-4 w-4" />
+              )}
+            </button>
+          )}
+        </div>
 
-        {/* Rationale */}
-        {question.rationale && (
+        {/* Rationale — collapsible */}
+        {question.rationale && rationaleExpanded && (
           <p className="text-[13px] italic leading-[1.5] text-muted-foreground">
             {question.rationale}
           </p>
@@ -89,7 +107,8 @@ function QuestionBlock({
             cons={opt.cons}
             selected={question.answeredIndex === idx}
             recommended={!isAnswered && idx === question.recommendedIndex}
-            disabled={locked && question.answeredIndex !== idx}
+            dimmed={isAnswered && question.answeredIndex !== idx}
+            locked={locked}
             onSelect={() => handleSelectOption(idx)}
           />
         ))}

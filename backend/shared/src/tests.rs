@@ -122,150 +122,14 @@ fn make_question_option(label: &str) -> QuestionOption {
     }
 }
 
-fn make_qa_round() -> QaRoundContent {
-    QaRoundContent {
-        questions: vec![Question {
-            id: Uuid::now_v7(),
-            text: "Should we use REST?".into(),
-            domain: "architecture".into(),
-            rationale: "This decision affects the entire API surface.".into(),
-            options: vec![make_question_option("yes"), make_question_option("no")],
-            recommended_option_index: 0,
-        }],
-    }
-}
-
 // ── ServerToContainer round-trips ─────────────────────────────────────────────
 
 #[test]
-fn server_to_container_start_grooming() {
-    let msg = ServerToContainer::StartGrooming {
-        story_id: Uuid::now_v7(),
-        context: GroomingContext {
-            story_description: "As a user I want...".into(),
-            knowledge: make_knowledge(),
-            codebase_context: "rust monorepo".into(),
-        },
-    };
-    let json = serde_json::to_string(&msg).unwrap();
-    let back: ServerToContainer = serde_json::from_str(&json).unwrap();
-    assert_eq!(
-        serde_json::to_value(&msg).unwrap(),
-        serde_json::to_value(&back).unwrap()
-    );
-}
-
-#[test]
-fn server_to_container_start_planning() {
-    let msg = ServerToContainer::StartPlanning {
-        story_id: Uuid::now_v7(),
-        context: PlanningContext {
-            story_description: "plan this".into(),
-            grooming_decisions: vec![QaDecision {
-                question_text: "REST?".into(),
-                answer_text: "yes".into(),
-                domain: "arch".into(),
-            }],
-            knowledge: make_knowledge(),
-            codebase_context: "monorepo".into(),
-        },
-    };
-    let json = serde_json::to_string(&msg).unwrap();
-    let back: ServerToContainer = serde_json::from_str(&json).unwrap();
-    assert_eq!(
-        serde_json::to_value(&msg).unwrap(),
-        serde_json::to_value(&back).unwrap()
-    );
-}
-
-#[test]
-fn server_to_container_answer_received() {
-    let msg = ServerToContainer::AnswerReceived {
-        round_id: Uuid::now_v7(),
-        answers: vec![make_answer()],
-        context: AnswerContext {
-            story_id: Uuid::now_v7(),
-            stage: "grooming".into(),
-            questions: vec![Question {
-                id: Uuid::now_v7(),
-                text: "Q?".into(),
-                domain: "backend".into(),
-                rationale: "Important for backend architecture.".into(),
-                options: vec![make_question_option("A")],
-                recommended_option_index: 0,
-            }],
-            prior_decisions: vec![],
-            grooming_context: Some(GroomingContext {
-                story_description: "desc".into(),
-                knowledge: vec![],
-                codebase_context: String::new(),
-            }),
-            planning_context: None,
-        },
-    };
-    let json = serde_json::to_string(&msg).unwrap();
-    let back: ServerToContainer = serde_json::from_str(&json).unwrap();
-    assert_eq!(
-        serde_json::to_value(&msg).unwrap(),
-        serde_json::to_value(&back).unwrap()
-    );
-}
-
-#[test]
-fn server_to_container_start_task() {
-    let msg = ServerToContainer::StartTask {
-        story_id: Uuid::now_v7(),
-        task_id: Uuid::now_v7(),
-        session_id: "sess-abc".into(),
-        context: TaskContext {
-            task_description: "implement auth".into(),
-            story_decisions: vec![],
-            sibling_decisions: vec![],
-            knowledge: make_knowledge(),
-        },
-    };
-    let json = serde_json::to_string(&msg).unwrap();
-    let back: ServerToContainer = serde_json::from_str(&json).unwrap();
-    assert_eq!(
-        serde_json::to_value(&msg).unwrap(),
-        serde_json::to_value(&back).unwrap()
-    );
-}
-
-#[test]
-fn server_to_container_resume_task() {
-    let msg = ServerToContainer::ResumeTask {
-        task_id: Uuid::now_v7(),
-        session_id: "sess-xyz".into(),
-        answer: make_answer(),
-    };
-    let json = serde_json::to_string(&msg).unwrap();
-    let back: ServerToContainer = serde_json::from_str(&json).unwrap();
-    assert_eq!(
-        serde_json::to_value(&msg).unwrap(),
-        serde_json::to_value(&back).unwrap()
-    );
-}
-
-#[test]
-fn server_to_container_cancel_task() {
-    let msg = ServerToContainer::CancelTask {
-        task_id: Uuid::now_v7(),
-    };
-    let json = serde_json::to_string(&msg).unwrap();
-    let back: ServerToContainer = serde_json::from_str(&json).unwrap();
-    assert_eq!(
-        serde_json::to_value(&msg).unwrap(),
-        serde_json::to_value(&back).unwrap()
-    );
-}
-
-#[test]
-fn server_to_container_description_approved() {
-    let msg = ServerToContainer::DescriptionApproved {
-        story_id: Uuid::now_v7(),
-        stage: "grooming".into(),
-        description: "Refined story description".into(),
+fn server_to_container_execute() {
+    let msg = ServerToContainer::Execute {
+        session_id: Uuid::now_v7(),
+        system_prompt: "You are a helpful assistant.".into(),
+        prompt: "Generate QA questions for this story.".into(),
     };
     let json = serde_json::to_string(&msg).unwrap();
     let back: ServerToContainer = serde_json::from_str(&json).unwrap();
@@ -289,11 +153,25 @@ fn server_to_container_ping() {
 // ── ContainerToServer round-trips ─────────────────────────────────────────────
 
 #[test]
-fn container_to_server_question_batch() {
-    let msg = ContainerToServer::QuestionBatch {
-        story_id: Uuid::now_v7(),
-        task_id: Some(Uuid::now_v7()),
-        round: make_qa_round(),
+fn container_to_server_execution_result() {
+    let output = serde_json::json!({
+        "questions": [
+            {
+                "id": Uuid::now_v7().to_string(),
+                "text": "Should we use REST?",
+                "domain": "architecture",
+                "rationale": "Affects the entire API surface.",
+                "options": [
+                    {"label": "yes", "pros": "Simple.", "cons": "Limited."},
+                    {"label": "no", "pros": "Flexible.", "cons": "Complex."}
+                ],
+                "recommended_option_index": 0
+            }
+        ]
+    });
+    let msg = ContainerToServer::ExecutionResult {
+        session_id: Uuid::now_v7(),
+        output,
     };
     let json = serde_json::to_string(&msg).unwrap();
     let back: ContainerToServer = serde_json::from_str(&json).unwrap();
@@ -304,111 +182,10 @@ fn container_to_server_question_batch() {
 }
 
 #[test]
-fn container_to_server_question_batch_no_task() {
-    let msg = ContainerToServer::QuestionBatch {
-        story_id: Uuid::now_v7(),
-        task_id: None,
-        round: make_qa_round(),
-    };
-    let json = serde_json::to_string(&msg).unwrap();
-    let back: ContainerToServer = serde_json::from_str(&json).unwrap();
-    assert_eq!(
-        serde_json::to_value(&msg).unwrap(),
-        serde_json::to_value(&back).unwrap()
-    );
-}
-
-#[test]
-fn container_to_server_task_decomposition() {
-    let msg = ContainerToServer::TaskDecomposition {
-        story_id: Uuid::now_v7(),
-        proposed_tasks: vec![ProposedTask {
-            name: "write tests".into(),
-            description: "tdd".into(),
-            task_type: TaskType::Test,
-            position: 0,
-            depends_on: vec![],
-        }],
-    };
-    let json = serde_json::to_string(&msg).unwrap();
-    let back: ContainerToServer = serde_json::from_str(&json).unwrap();
-    assert_eq!(
-        serde_json::to_value(&msg).unwrap(),
-        serde_json::to_value(&back).unwrap()
-    );
-}
-
-#[test]
-fn container_to_server_task_paused() {
-    let msg = ContainerToServer::TaskPaused {
-        task_id: Uuid::now_v7(),
-        question: PauseQuestion {
-            text: "Which db?".into(),
-            domain: "infra".into(),
-            rationale: "Database choice affects scalability and operations.".into(),
-            options: vec![
-                make_question_option("postgres"),
-                make_question_option("sqlite"),
-            ],
-            recommended_option_index: 0,
-        },
-    };
-    let json = serde_json::to_string(&msg).unwrap();
-    let back: ContainerToServer = serde_json::from_str(&json).unwrap();
-    assert_eq!(
-        serde_json::to_value(&msg).unwrap(),
-        serde_json::to_value(&back).unwrap()
-    );
-}
-
-#[test]
-fn container_to_server_task_completed() {
-    let msg = ContainerToServer::TaskCompleted {
-        task_id: Uuid::now_v7(),
-        commit_sha: "abc1234".into(),
-    };
-    let json = serde_json::to_string(&msg).unwrap();
-    let back: ContainerToServer = serde_json::from_str(&json).unwrap();
-    assert_eq!(
-        serde_json::to_value(&msg).unwrap(),
-        serde_json::to_value(&back).unwrap()
-    );
-}
-
-#[test]
-fn container_to_server_task_failed() {
-    let msg = ContainerToServer::TaskFailed {
-        task_id: Uuid::now_v7(),
-        error: "timeout".into(),
-    };
-    let json = serde_json::to_string(&msg).unwrap();
-    let back: ContainerToServer = serde_json::from_str(&json).unwrap();
-    assert_eq!(
-        serde_json::to_value(&msg).unwrap(),
-        serde_json::to_value(&back).unwrap()
-    );
-}
-
-#[test]
-fn container_to_server_status_update() {
-    let msg = ContainerToServer::StatusUpdate {
-        task_id: Uuid::now_v7(),
-        status_text: "running tests".into(),
-    };
-    let json = serde_json::to_string(&msg).unwrap();
-    let back: ContainerToServer = serde_json::from_str(&json).unwrap();
-    assert_eq!(
-        serde_json::to_value(&msg).unwrap(),
-        serde_json::to_value(&back).unwrap()
-    );
-}
-
-#[test]
-fn container_to_server_refined_description() {
-    let msg = ContainerToServer::RefinedDescription {
-        story_id: Uuid::now_v7(),
-        stage: "grooming".into(),
-        refined_description: "A refined description".into(),
+fn container_to_server_execution_failed() {
+    let msg = ContainerToServer::ExecutionFailed {
+        session_id: Uuid::now_v7(),
+        error: "timeout after 300s".into(),
     };
     let json = serde_json::to_string(&msg).unwrap();
     let back: ContainerToServer = serde_json::from_str(&json).unwrap();
@@ -425,6 +202,51 @@ fn container_to_server_pong() {
     let back: ContainerToServer = serde_json::from_str(&json).unwrap();
     assert_eq!(
         serde_json::to_value(&msg).unwrap(),
+        serde_json::to_value(&back).unwrap()
+    );
+}
+
+// ── Kept types round-trips ────────────────────────────────────────────────────
+
+#[test]
+fn answer_round_trip() {
+    let a = make_answer();
+    let json = serde_json::to_string(&a).unwrap();
+    let back: Answer = serde_json::from_str(&json).unwrap();
+    assert_eq!(
+        serde_json::to_value(&a).unwrap(),
+        serde_json::to_value(&back).unwrap()
+    );
+}
+
+#[test]
+fn question_option_round_trip() {
+    let opt = make_question_option("postgres");
+    round_trip(&opt);
+}
+
+#[test]
+fn qa_decision_round_trip() {
+    let d = QaDecision {
+        question_text: "REST?".into(),
+        answer_text: "yes".into(),
+        domain: "arch".into(),
+    };
+    let json = serde_json::to_string(&d).unwrap();
+    let back: QaDecision = serde_json::from_str(&json).unwrap();
+    assert_eq!(
+        serde_json::to_value(&d).unwrap(),
+        serde_json::to_value(&back).unwrap()
+    );
+}
+
+#[test]
+fn knowledge_entry_round_trip() {
+    let entries = make_knowledge();
+    let json = serde_json::to_string(&entries).unwrap();
+    let back: Vec<KnowledgeEntry> = serde_json::from_str(&json).unwrap();
+    assert_eq!(
+        serde_json::to_value(&entries).unwrap(),
         serde_json::to_value(&back).unwrap()
     );
 }

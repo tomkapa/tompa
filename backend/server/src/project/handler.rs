@@ -45,7 +45,7 @@ pub(crate) async fn list_projects(
     Query(params): Query<ListProjectsParams>,
 ) -> Result<Json<Vec<ProjectResponse>>, ApiError> {
     if let Some(org_id) = params.org_id
-        && org_id != tx.auth.org_id
+        && org_id != tx.org_id
     {
         return Err(ApiError::Forbidden);
     }

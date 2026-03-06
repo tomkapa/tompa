@@ -200,7 +200,7 @@ pub(crate) async fn start_story(
     mut tx: OrgTx,
     Path(id): Path<Uuid>,
 ) -> Result<Json<StoryResponse>, ApiError> {
-    let org_id = tx.auth.org_id;
+    let org_id = tx.org_id;
     let story = service::start_story(&mut tx, id).await?;
     tx.commit().await?;
 
@@ -214,37 +214,17 @@ pub(crate) async fn start_story(
     tokio::spawn(async move {
         if pipeline_stage.as_deref() == Some("implementation") {
             // Bug stories skip grooming -> go straight to planning
-            match crate::agents::service::build_planning_context(
-                &s.pool,
+            crate::agents::service::dispatch_planning(&s, org_id, project_id, story_id).await;
+        } else {
+            // Feature/refactor: start with grooming
+            crate::agents::service::dispatch_grooming(
+                &s,
                 org_id,
                 project_id,
                 story_id,
                 &description,
             )
-            .await
-            {
-                Ok(ctx) => {
-                    crate::agents::service::send_start_planning(&s, project_id, story_id, ctx)
-                        .await;
-                }
-                Err(e) => tracing::error!(%story_id, %e, "failed to build planning context"),
-            }
-        } else {
-            // Feature/refactor: start with grooming
-            match crate::agents::service::build_grooming_context(
-                &s.pool,
-                org_id,
-                project_id,
-                &description,
-            )
-            .await
-            {
-                Ok(ctx) => {
-                    crate::agents::service::send_start_grooming(&s, project_id, story_id, ctx)
-                        .await;
-                }
-                Err(e) => tracing::error!(%story_id, %e, "failed to build grooming context"),
-            }
+            .await;
         }
     });
 
@@ -274,13 +254,12 @@ pub(crate) async fn approve_description(
     Path(id): Path<Uuid>,
     Json(req): Json<ApproveRefinedDescriptionRequest>,
 ) -> Result<Json<StoryResponse>, ApiError> {
-    let org_id = tx.auth.org_id;
+    let org_id = tx.org_id;
     let (story, approved_stage) = service::approve_refined_description(&mut tx, id, req).await?;
     tx.commit().await?;
 
     let story_id = story.id;
     let project_id = story.project_id;
-    let description = story.description.clone();
     let s = state.clone();
 
     tokio::spawn(async move {
@@ -297,37 +276,13 @@ pub(crate) async fn approve_description(
             },
         );
 
-        // Send DescriptionApproved to the agent.
-        crate::agents::service::send_description_approved(
-            &s,
-            project_id,
-            story_id,
-            &approved_stage,
-            &description,
-        )
-        .await;
-
-        // If grooming was approved, start planning.
         if approved_stage == "grooming" {
-            match crate::agents::service::build_planning_context(
-                &s.pool,
-                org_id,
-                project_id,
-                story_id,
-                &description,
-            )
-            .await
-            {
-                Ok(ctx) => {
-                    crate::agents::service::send_start_planning(&s, project_id, story_id, ctx)
-                        .await;
-                }
-                Err(e) => {
-                    tracing::error!(%story_id, %e, "failed to build planning context after approval")
-                }
-            }
+            // Grooming approved → start planning.
+            crate::agents::service::dispatch_planning(&s, org_id, project_id, story_id).await;
+        } else if approved_stage == "planning" {
+            // Planning approved → decompose into tasks.
+            crate::agents::service::dispatch_decomposition(&s, org_id, project_id, story_id).await;
         }
-        // If planning was approved, the agent handles decomposition on receipt of DescriptionApproved.
     });
 
     Ok(Json(story))

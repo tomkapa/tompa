@@ -15,6 +15,7 @@ pub mod story;
 pub mod task;
 
 use axum::{Router, routing::get};
+use tower_http::trace::TraceLayer;
 
 use state::AppState;
 
@@ -38,5 +39,6 @@ pub fn build_app(state: AppState) -> Router {
         .merge(qa::handler::router(state.clone()))
         .merge(agents::handler::router(state.clone()))
         .merge(sse::handler::router(state.clone()))
+        .layer(TraceLayer::new_for_http())
         .with_state(state)
 }

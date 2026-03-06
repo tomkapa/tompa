@@ -2,8 +2,6 @@ mod agent_status;
 mod claude_code;
 mod config;
 mod dispatcher;
-mod git_manager;
-mod prompts;
 mod setup_ui;
 mod ws_client;
 
@@ -18,7 +16,6 @@ use crate::{
     claude_code::ClaudeCode,
     config::Config,
     dispatcher::{DispatchMessage, Dispatcher},
-    git_manager::GitManager,
     setup_ui::SetupUi,
     ws_client::WsClient,
 };
@@ -52,27 +49,17 @@ async fn main() -> Result<()> {
         status_tx,
     );
 
-    // Claude Code actor — present in all modes (handles both Q&A and implementation)
+    // Claude Code actor — present in all modes
     let (claude_tx, claude_rx) = mpsc::channel(64);
-    let claude_actor = ClaudeCode::new(config.claude_cmd.clone(), dispatch_tx.clone(), claude_rx);
-
-    // Git manager — Dev and Standalone only
-    let (git_tx, git_actor) = match config.mode {
-        ContainerMode::Dev | ContainerMode::Standalone => {
-            let (tx, rx) = mpsc::channel(64);
-            let actor = GitManager::new(
-                config.github_repo_url.clone(),
-                config.github_access_token.clone(),
-                dispatch_tx.clone(),
-                rx,
-            );
-            (Some(tx), Some(actor))
-        }
-        ContainerMode::Project => (None, None),
-    };
+    let claude_actor = ClaudeCode::new(
+        config.claude_cmd.clone(),
+        dispatch_tx.clone(),
+        claude_rx,
+        config.max_concurrent_processes,
+    );
 
     // Setup UI — Project and Standalone only
-    let (ui_tx, ui_actor) = match config.mode {
+    let (_ui_tx, ui_actor) = match config.mode {
         ContainerMode::Project | ContainerMode::Standalone => {
             let mode_str = match config.mode {
                 ContainerMode::Project => "project",
@@ -93,14 +80,11 @@ async fn main() -> Result<()> {
         ContainerMode::Dev => (None, None),
     };
 
-    let dispatcher = Dispatcher::new(dispatch_rx, Some(ws_tx), Some(claude_tx), git_tx, ui_tx);
+    let dispatcher = Dispatcher::new(dispatch_rx, Some(ws_tx), Some(claude_tx));
 
     // Spawn all active actors
     tokio::spawn(ws_actor.run());
     tokio::spawn(claude_actor.run());
-    if let Some(actor) = git_actor {
-        tokio::spawn(actor.run());
-    }
     if let Some(actor) = ui_actor {
         tokio::spawn(actor.run());
     }

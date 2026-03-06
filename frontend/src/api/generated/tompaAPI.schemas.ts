@@ -150,6 +150,7 @@ export interface ProjectResponse {
   description?: string | null;
   /** @nullable */
   github_repo_url?: string | null;
+  grooming_roles: string[];
   id: string;
   name: string;
   org_id: string;
@@ -287,6 +288,8 @@ export interface UpdateProjectRequest {
   description?: string | null;
   /** @nullable */
   github_repo_url?: string | null;
+  /** @nullable */
+  grooming_roles?: string[] | null;
   /** @nullable */
   name?: string | null;
 }

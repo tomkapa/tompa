@@ -8,7 +8,8 @@ const defaultProps = {
   cons: 'Less flexible',
   selected: false,
   recommended: false,
-  disabled: false,
+  dimmed: false,
+  locked: false,
   onSelect: vi.fn(),
 }
 
@@ -33,17 +34,35 @@ describe('AnswerOptionCard', () => {
     expect(screen.getByText('Fast to implement')).toBeInTheDocument()
   })
 
-  it('disabled state prevents click', () => {
+  it('locked+not-selected is completely inert: no radio, no expand', () => {
     const onSelect = vi.fn()
-    render(<AnswerOptionCard {...defaultProps} disabled={true} onSelect={onSelect} />)
+    render(<AnswerOptionCard {...defaultProps} locked={true} selected={false} onSelect={onSelect} />)
+    // No radio button (non-interactive)
+    expect(screen.queryByLabelText('Select Option A')).not.toBeInTheDocument()
+    // Clicking does nothing — no expand
     fireEvent.click(screen.getByText('Option A'))
+    expect(screen.queryByText('Fast to implement')).not.toBeInTheDocument()
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('locked+selected allows expand/collapse but not reselection', () => {
+    const onSelect = vi.fn()
+    render(<AnswerOptionCard {...defaultProps} locked={true} selected={true} onSelect={onSelect} />)
+    // Pros/cons not visible initially
+    expect(screen.queryByText('Fast to implement')).not.toBeInTheDocument()
+    // Clicking card expands
+    fireEvent.click(screen.getByText('Option A'))
+    expect(screen.getByText('Fast to implement')).toBeInTheDocument()
+    // Radio click does nothing
+    fireEvent.click(screen.getByLabelText('Select Option A'))
     expect(onSelect).not.toHaveBeenCalled()
   })
 
   it('selected state applies primary bg styling', () => {
     render(<AnswerOptionCard {...defaultProps} selected={true} />)
-    const button = screen.getByRole('button', { name: 'Option A' })
-    expect(button.className).toContain('bg-primary')
+    const label = screen.getByText('Option A')
+    const container = label.closest('[class*="bg-primary"]')
+    expect(container).toBeInTheDocument()
   })
 
   it('default state applies background styling', () => {
@@ -77,9 +96,29 @@ describe('AnswerOptionCard', () => {
     expect(screen.queryByText('Fast to implement')).not.toBeInTheDocument()
   })
 
-  it('selected state does not show chevron or pros/cons', () => {
+  it('selected state shows chevron and allows expand/collapse', () => {
     render(<AnswerOptionCard {...defaultProps} selected={true} />)
-    expect(screen.queryByLabelText('Select Option A')).not.toBeInTheDocument()
+    // Radio button exists but clicking it does not reselect
+    expect(screen.getByLabelText('Select Option A')).toBeInTheDocument()
+    // Pros/cons not visible initially
     expect(screen.queryByText('Fast to implement')).not.toBeInTheDocument()
+    // Clicking card expands pros/cons
+    fireEvent.click(screen.getByText('Option A'))
+    expect(screen.getByText('Fast to implement')).toBeInTheDocument()
+    expect(screen.getByText('Less flexible')).toBeInTheDocument()
+  })
+
+  it('selected state radio click does not call onSelect', () => {
+    const onSelect = vi.fn()
+    render(<AnswerOptionCard {...defaultProps} selected={true} onSelect={onSelect} />)
+    fireEvent.click(screen.getByLabelText('Select Option A'))
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('dimmed state shows chevron and allows expand/collapse', () => {
+    render(<AnswerOptionCard {...defaultProps} dimmed={true} />)
+    expect(screen.queryByText('Fast to implement')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('Option A'))
+    expect(screen.getByText('Fast to implement')).toBeInTheDocument()
   })
 })

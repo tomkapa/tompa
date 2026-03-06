@@ -2,3 +2,5 @@
 - Reference doc/tech.md for the technical architecture decisions
 - Reference doc/atomic_design.md for the UI/UX design requirements
 - MUST ensure backend-check and frontend-check are passing before committing
+- Interface Segregation / Least Privilege: functions and types must accept only what they actually need. Never pass a large struct (e.g. `AuthContext`) when a single field (e.g. `org_id: Uuid`) is all that's used.
+- MUST follow SOLID and DRY principle.

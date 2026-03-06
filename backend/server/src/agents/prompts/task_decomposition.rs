@@ -1,14 +1,16 @@
-use shared::types::{PlanningContext, QaDecision};
+use shared::types::QaDecision;
 
+/// Returns `(system_prompt, prompt)`.
 pub fn build_decomposition_prompt(
-    context: &PlanningContext,
+    story_description: &str,
+    codebase_context: &str,
+    grooming_decisions: &[QaDecision],
     planning_decisions: &[QaDecision],
-) -> String {
-    let grooming = fmt_decisions(&context.grooming_decisions);
+) -> (String, String) {
+    let grooming = fmt_decisions(grooming_decisions);
     let planning = fmt_decisions(planning_decisions);
 
-    format!(
-        r#"You are a senior engineer decomposing a story into atomic implementation tasks.
+    let system = r#"You are a senior engineer decomposing a story into atomic implementation tasks.
 
 Rules:
 - Each task must be completable in a single Claude Code session (roughly 10–15 file changes).
@@ -19,7 +21,22 @@ Rules:
 - Assign positions starting at 1. Use depends_on to list position numbers of prerequisite tasks.
 - Design and test-planning tasks may run in parallel; code tasks should depend on design.
 
-## Story Description
+Respond ONLY with valid JSON — no markdown fences, no extra text:
+{
+  "tasks": [
+    {
+      "name": "Short task name",
+      "description": "Detailed description of exactly what to implement.",
+      "task_type": "code",
+      "position": 1,
+      "depends_on": []
+    }
+  ]
+}"#
+    .to_owned();
+
+    let prompt = format!(
+        r#"## Story Description
 {story}
 
 ## Grooming Decisions
@@ -29,29 +46,18 @@ Rules:
 {planning}
 
 ## Codebase Context
-{codebase}
-
-Respond ONLY with valid JSON — no markdown fences, no extra text:
-{{
-  "tasks": [
-    {{
-      "name": "Short task name",
-      "description": "Detailed description of exactly what to implement.",
-      "task_type": "code",
-      "position": 1,
-      "depends_on": []
-    }}
-  ]
-}}"#,
-        story = context.story_description,
+{codebase}"#,
+        story = story_description,
         grooming = grooming,
         planning = planning,
-        codebase = if context.codebase_context.is_empty() {
+        codebase = if codebase_context.is_empty() {
             "No codebase context available.".into()
         } else {
-            context.codebase_context.clone()
+            codebase_context.to_owned()
         },
-    )
+    );
+
+    (system, prompt)
 }
 
 fn fmt_decisions(decisions: &[QaDecision]) -> String {

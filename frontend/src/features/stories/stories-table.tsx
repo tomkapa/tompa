@@ -127,12 +127,12 @@ export function StoriesTable({
   return (
     <div
       className={cn(
-        'rounded-2xl border border-border bg-background overflow-hidden',
+        'flex min-h-0 flex-col rounded-2xl border border-border bg-background overflow-hidden',
         className
       )}
     >
-      {/* Column headers */}
-      <div className="flex items-center h-11 border-b border-border bg-muted">
+      {/* Column headers — fixed above scroll area */}
+      <div className="flex shrink-0 items-center h-11 border-b border-border bg-muted">
         <div className="w-10 shrink-0" />
         <div className="flex-1 px-3 text-xs font-medium text-muted-foreground uppercase tracking-wide">
           Name
@@ -148,56 +148,59 @@ export function StoriesTable({
         </div>
       </div>
 
-      {/* Loading skeleton */}
-      {isLoading && stories.length === 0 && (
-        <>
-          <SkeletonRow />
-          <SkeletonRow />
-          <SkeletonRow />
-        </>
-      )}
+      {/* Scrollable body — only rows scroll, header stays fixed */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {/* Loading skeleton */}
+        {isLoading && stories.length === 0 && (
+          <>
+            <SkeletonRow />
+            <SkeletonRow />
+            <SkeletonRow />
+          </>
+        )}
 
-      {/* Rows */}
-      {!isLoading && (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext
-            items={stories.map((s) => s.id)}
-            strategy={verticalListSortingStrategy}
+        {/* Rows */}
+        {!isLoading && (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
           >
-            {stories.map((story) => (
-              <SortableRow
-                key={story.id}
-                story={story}
-                onStoryClick={() => onStoryClick(story.id)}
-                onStartStory={() => onStartStory(story.id)}
-              />
-            ))}
-          </SortableContext>
-          <DragOverlay
-            dropAnimation={{ duration: 200, easing: 'ease-out' }}
-          >
-            {activeStory && (
-              <div className="scale-[1.02] rounded-lg shadow-lg opacity-90 bg-background">
-                <StoryTableRow story={activeStory} onClick={() => {}} />
-              </div>
-            )}
-          </DragOverlay>
-        </DndContext>
-      )}
+            <SortableContext
+              items={stories.map((s) => s.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {stories.map((story) => (
+                <SortableRow
+                  key={story.id}
+                  story={story}
+                  onStoryClick={() => onStoryClick(story.id)}
+                  onStartStory={() => onStartStory(story.id)}
+                />
+              ))}
+            </SortableContext>
+            <DragOverlay
+              dropAnimation={{ duration: 200, easing: 'ease-out' }}
+            >
+              {activeStory && (
+                <div className="scale-[1.02] rounded-lg shadow-lg opacity-90 bg-background">
+                  <StoryTableRow story={activeStory} onClick={() => {}} />
+                </div>
+              )}
+            </DragOverlay>
+          </DndContext>
+        )}
 
-      {/* Empty states */}
-      {!isLoading && stories.length === 0 && (
-        <div className="flex items-center justify-center h-24 text-sm text-muted-foreground">
-          {searchQuery
-            ? `No stories matching "${searchQuery}"`
-            : 'No stories yet. Click New to add one.'}
-        </div>
-      )}
+        {/* Empty states */}
+        {!isLoading && stories.length === 0 && (
+          <div className="flex items-center justify-center h-24 text-sm text-muted-foreground">
+            {searchQuery
+              ? `No stories matching "${searchQuery}"`
+              : 'No stories yet. Click New to add one.'}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

@@ -65,7 +65,7 @@ pub async fn create_key(
         .map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?
         .map_err(|e| ApiError::Internal(anyhow::anyhow!(e)))?;
 
-    let org_id = tx.auth.org_id;
+    let org_id = tx.org_id;
 
     // Validate the project exists in this org (RLS enforces org isolation).
     crate::project::repo::get_project(tx, req.project_id, org_id)

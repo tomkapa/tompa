@@ -71,12 +71,13 @@ pub(crate) async fn list_rounds(
 )]
 pub(crate) async fn submit_answer(
     State(state): State<AppState>,
+    auth: axum::Extension<crate::auth::types::AuthContext>,
     mut tx: OrgTx,
     Path(id): Path<Uuid>,
     Json(req): Json<SubmitAnswerRequest>,
 ) -> Result<Json<QaRoundResponse>, ApiError> {
-    let org_id = tx.auth.org_id;
-    let result = service::submit_answer(&mut tx, id, req).await?;
+    let org_id = tx.org_id;
+    let result = service::submit_answer(&mut tx, auth.user_id, id, req).await?;
     tx.commit().await?;
 
     if let Some(payload) = result.notify {
@@ -90,15 +91,13 @@ pub(crate) async fn submit_answer(
                     round_id: payload.round_id,
                 },
             );
-            agents::service::send_answer_received(
+            agents::service::dispatch_next_round(
                 &s,
-                payload.project_id,
                 org_id,
+                payload.project_id,
                 payload.story_id,
                 &payload.stage,
-                payload.round_id,
-                payload.answers,
-                payload.questions,
+                payload.task_id,
             )
             .await;
         });

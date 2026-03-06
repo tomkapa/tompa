@@ -137,7 +137,7 @@ pub async fn list_tasks(tx: &mut OrgTx, story_id: Uuid) -> Result<Vec<TaskRespon
 }
 
 pub async fn get_task(tx: &mut OrgTx, id: Uuid) -> Result<TaskResponse, ApiError> {
-    let org_id = tx.auth.org_id;
+    let org_id = tx.org_id;
     let row = repo::get_task(tx, id, org_id)
         .await?
         .ok_or(ApiError::NotFound)?;
@@ -158,7 +158,7 @@ pub async fn create_task(tx: &mut OrgTx, req: CreateTaskRequest) -> Result<TaskR
         )));
     }
 
-    let org_id = tx.auth.org_id;
+    let org_id = tx.org_id;
 
     // Verify the story exists in this org
     let story_exists: Option<(Uuid,)> = sqlx::query_as(
@@ -193,7 +193,7 @@ pub async fn update_task(
     id: Uuid,
     req: UpdateTaskRequest,
 ) -> Result<TaskResponse, ApiError> {
-    let org_id = tx.auth.org_id;
+    let org_id = tx.org_id;
 
     let current = repo::get_task(tx, id, org_id)
         .await?
@@ -223,7 +223,7 @@ pub async fn update_task(
 }
 
 pub async fn delete_task(tx: &mut OrgTx, id: Uuid) -> Result<(), ApiError> {
-    let org_id = tx.auth.org_id;
+    let org_id = tx.org_id;
     let deleted = repo::soft_delete_task(tx, id, org_id).await?;
 
     if !deleted {
@@ -233,7 +233,7 @@ pub async fn delete_task(tx: &mut OrgTx, id: Uuid) -> Result<(), ApiError> {
 }
 
 pub async fn mark_done(tx: &mut OrgTx, id: Uuid) -> Result<TaskResponse, ApiError> {
-    let org_id = tx.auth.org_id;
+    let org_id = tx.org_id;
 
     let current = repo::get_task(tx, id, org_id)
         .await?
@@ -273,7 +273,7 @@ pub async fn create_dependency(
     tx: &mut OrgTx,
     req: CreateDependencyRequest,
 ) -> Result<DependencyResponse, ApiError> {
-    let org_id = tx.auth.org_id;
+    let org_id = tx.org_id;
 
     // Verify both tasks exist and share a story
     let task = repo::get_task(tx, req.task_id, org_id)

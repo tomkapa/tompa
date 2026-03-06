@@ -22,8 +22,6 @@ pub struct AllAnsweredPayload {
     pub task_id: Option<Uuid>,
     pub stage: String,
     pub answers: Vec<Answer>,
-    /// Original questions from this round, needed to build recovery context.
-    pub questions: Vec<shared::types::Question>,
 }
 
 /// Result of `submit_answer`, carrying the API response and an optional
@@ -62,7 +60,7 @@ pub async fn list_rounds(
         return Err(QaError::MissingFilter.into());
     }
 
-    let org_id = tx.auth.org_id;
+    let org_id = tx.org_id;
     let rows = repo::list_rounds(
         tx,
         org_id,
@@ -77,11 +75,11 @@ pub async fn list_rounds(
 
 pub async fn submit_answer(
     tx: &mut OrgTx,
+    user_id: Uuid,
     round_id: Uuid,
     req: SubmitAnswerRequest,
 ) -> Result<SubmitAnswerResult, ApiError> {
-    let org_id = tx.auth.org_id;
-    let user_id = tx.auth.user_id;
+    let org_id = tx.org_id;
 
     let row = repo::get_round(tx, round_id, org_id)
         .await?
@@ -141,28 +139,6 @@ pub async fn submit_answer(
             })
             .collect();
 
-        // Build questions in shared::types::Question format for the recovery context.
-        let questions: Vec<shared::types::Question> = content
-            .questions
-            .iter()
-            .map(|q| shared::types::Question {
-                id: q.id,
-                text: q.text.clone(),
-                domain: q.domain.clone(),
-                rationale: q.rationale.clone(),
-                options: q
-                    .options
-                    .iter()
-                    .map(|o| shared::types::QuestionOption {
-                        label: o.label.clone(),
-                        pros: o.pros.clone(),
-                        cons: o.cons.clone(),
-                    })
-                    .collect(),
-                recommended_option_index: q.recommended_option_index,
-            })
-            .collect();
-
         Some(AllAnsweredPayload {
             project_id: story.project_id,
             round_id,
@@ -170,7 +146,6 @@ pub async fn submit_answer(
             task_id,
             stage: stage.clone(),
             answers,
-            questions,
         })
     } else {
         None
@@ -183,7 +158,7 @@ pub async fn submit_answer(
 }
 
 pub async fn rollback(tx: &mut OrgTx, round_id: Uuid) -> Result<QaRoundResponse, ApiError> {
-    let org_id = tx.auth.org_id;
+    let org_id = tx.org_id;
 
     let row = repo::get_round(tx, round_id, org_id)
         .await?
@@ -230,7 +205,7 @@ pub async fn course_correct(
         )));
     }
 
-    let org_id = tx.auth.org_id;
+    let org_id = tx.org_id;
 
     let max_round = repo::get_max_round_number(tx, req.story_id, req.task_id, &req.stage)
         .await?

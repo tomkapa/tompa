@@ -1,6 +1,6 @@
 use uuid::Uuid;
 
-use crate::{db::OrgTx, errors::ApiError};
+use crate::{agents::prompts::grooming::GROOMING_ROLES, db::OrgTx, errors::ApiError};
 
 use super::{
     repo,
@@ -23,19 +23,32 @@ fn to_response(row: repo::ProjectRow) -> ProjectResponse {
         name: row.name,
         description: row.description,
         github_repo_url: row.github_repo_url,
+        grooming_roles: row.grooming_roles,
         created_at: row.created_at,
         updated_at: row.updated_at,
     }
 }
 
+fn validate_grooming_roles(roles: &[String]) -> Result<(), ApiError> {
+    if !roles.iter().any(|r| r == "business_analyst") {
+        return Err(ProjectError::BusinessAnalystRequired.into());
+    }
+    for role in roles {
+        if !GROOMING_ROLES.iter().any(|gr| gr.id == role.as_str()) {
+            return Err(ProjectError::InvalidRoleId.into());
+        }
+    }
+    Ok(())
+}
+
 pub async fn list_projects(tx: &mut OrgTx) -> Result<Vec<ProjectResponse>, ApiError> {
-    let org_id = tx.auth.org_id;
+    let org_id = tx.org_id;
     let rows = repo::list_projects(tx, org_id).await?;
     Ok(rows.into_iter().map(to_response).collect())
 }
 
 pub async fn get_project(tx: &mut OrgTx, id: Uuid) -> Result<ProjectResponse, ApiError> {
-    let org_id = tx.auth.org_id;
+    let org_id = tx.org_id;
     let row = repo::get_project(tx, id, org_id)
         .await?
         .ok_or(ApiError::NotFound)?;
@@ -50,7 +63,7 @@ pub async fn create_project(
     if name.is_empty() {
         return Err(ProjectError::NameRequired.into());
     }
-    let org_id = tx.auth.org_id;
+    let org_id = tx.org_id;
     let row = repo::create_project(
         tx,
         org_id,
@@ -73,7 +86,10 @@ pub async fn update_project(
     {
         return Err(ProjectError::NameRequired.into());
     }
-    let org_id = tx.auth.org_id;
+    if let Some(ref roles) = req.grooming_roles {
+        validate_grooming_roles(roles)?;
+    }
+    let org_id = tx.org_id;
     let row = repo::update_project(
         tx,
         id,
@@ -81,6 +97,7 @@ pub async fn update_project(
         req.name.as_deref(),
         req.description.as_deref(),
         req.github_repo_url.as_deref(),
+        req.grooming_roles,
     )
     .await
     .map_err(unique_violation_to_name_taken)?
@@ -89,7 +106,7 @@ pub async fn update_project(
 }
 
 pub async fn delete_project(tx: &mut OrgTx, id: Uuid) -> Result<(), ApiError> {
-    let org_id = tx.auth.org_id;
+    let org_id = tx.org_id;
     let deleted = repo::soft_delete_project(tx, id, org_id).await?;
     if !deleted {
         return Err(ApiError::NotFound);

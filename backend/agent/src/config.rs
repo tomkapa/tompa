@@ -6,10 +6,13 @@ pub struct Config {
     pub mode: ContainerMode,
     pub server_url: String,
     pub api_key: String,
+    #[allow(dead_code)]
     pub github_repo_url: Option<String>,
+    #[allow(dead_code)]
     pub github_access_token: Option<String>,
     pub setup_ui_port: u16,
     pub claude_cmd: String,
+    pub max_concurrent_processes: usize,
 }
 
 impl Config {
@@ -32,6 +35,10 @@ impl Config {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(3001),
             claude_cmd: env::var("CLAUDE_CMD").unwrap_or_else(|_| "claude".into()),
+            max_concurrent_processes: env::var("AGENT_MAX_CONCURRENT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(10),
         }
     }
 }

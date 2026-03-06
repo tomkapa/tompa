@@ -8,7 +8,10 @@ interface AnswerOptionCardProps {
   cons: string
   selected: boolean
   recommended: boolean
-  disabled: boolean
+  /** Dims non-selected options when another option in the same question is already chosen */
+  dimmed: boolean
+  /** Completely prevents selection (historical/superseded round) */
+  locked: boolean
   onSelect: () => void
 }
 
@@ -18,79 +21,69 @@ function AnswerOptionCard({
   cons,
   selected,
   recommended,
-  disabled,
+  dimmed,
+  locked,
   onSelect,
 }: AnswerOptionCardProps) {
   const [expanded, setExpanded] = React.useState(false)
 
   function handleRadioClick(e: React.MouseEvent) {
     e.stopPropagation()
-    if (disabled && !selected) return
+    if (selected) return
     onSelect()
   }
 
   function handleCardClick() {
-    if (disabled && !selected) return
-    if (selected) return
     setExpanded((prev) => !prev)
   }
 
-  // Selected state: primary bg, white text, no chevron, no pros/cons
-  if (selected) {
-    return (
-      <button
-        type="button"
-        disabled
-        className="flex w-full items-center gap-3 rounded-[var(--radius-xs)] border border-primary bg-primary px-4 py-[14px] text-left pointer-events-none"
-      >
-        {/* Radio selected */}
-        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 border-primary-foreground">
-          <span className="h-2 w-2 rounded-full bg-primary-foreground" />
-        </span>
-        <span className="flex-1 text-sm font-medium leading-[1.4] text-primary-foreground">
-          {label}
-        </span>
-      </button>
-    )
-  }
-
-  // Disabled (answered, not selected): opacity 0.5, no interaction
-  if (disabled) {
+  // Locked + not selected: completely inert — no click, no hover, no expand
+  if (locked && !selected) {
     return (
       <div className="flex w-full flex-col rounded-[var(--radius-xs)] border border-border bg-background opacity-50 pointer-events-none">
         <div className="flex items-center gap-3 px-4 py-[14px]">
-          {/* Radio empty */}
           <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 border-border bg-background" />
-          <span className="flex-1 text-sm font-normal leading-[1.4] text-foreground">
-            {label}
-          </span>
-          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <span className="flex-1 text-sm font-normal leading-[1.4] text-foreground">{label}</span>
         </div>
       </div>
     )
   }
 
-  // Default / Expanded / AI Recommended states
+  // All other states: selected (any round), or active-round unselected
   return (
     <div
       className={cn(
-        'flex w-full flex-col rounded-[var(--radius-xs)] border bg-background transition-all duration-150 cursor-pointer',
-        recommended ? 'border-primary' : 'border-border'
+        'flex w-full flex-col rounded-[var(--radius-xs)] border transition-all duration-150 cursor-pointer',
+        selected
+          ? 'border-primary bg-primary'
+          : cn(
+              'bg-background',
+              recommended ? 'border-primary' : 'border-border',
+              dimmed ? 'opacity-50' : ''
+            )
       )}
       onClick={handleCardClick}
     >
       {/* Card Header */}
       <div className="flex items-center gap-3 px-4 py-[14px]">
-        {/* Radio empty — clicking selects the option */}
+        {/* Radio — disabled when already selected (selection is final per option) */}
         <button
           type="button"
           onClick={handleRadioClick}
-          className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 border-border bg-background hover:border-primary transition-colors"
+          disabled={selected}
+          className={cn(
+            'flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2',
+            selected
+              ? 'border-primary-foreground'
+              : 'border-border bg-background hover:border-primary transition-colors'
+          )}
           aria-label={`Select ${label}`}
-        />
+        >
+          {selected && <span className="h-2 w-2 rounded-full bg-primary-foreground" />}
+        </button>
 
         {/* Text column */}
-        {recommended ? (
+        {recommended && !selected ? (
           <div className="flex flex-1 flex-col gap-1">
             <span className="text-sm font-normal leading-[1.4] text-foreground">
               {label}
@@ -103,13 +96,23 @@ function AnswerOptionCard({
             </span>
           </div>
         ) : (
-          <span className="flex-1 text-sm font-normal leading-[1.4] text-foreground">
+          <span
+            className={cn(
+              'flex-1 text-sm leading-[1.4]',
+              selected ? 'font-medium text-primary-foreground' : 'font-normal text-foreground'
+            )}
+          >
             {label}
           </span>
         )}
 
         {/* Chevron indicator */}
-        <span className="shrink-0 p-0.5 text-muted-foreground">
+        <span
+          className={cn(
+            'shrink-0 p-0.5',
+            selected ? 'text-primary-foreground' : 'text-muted-foreground'
+          )}
+        >
           {expanded ? (
             <ChevronUp className="h-4 w-4" />
           ) : (
@@ -123,15 +126,35 @@ function AnswerOptionCard({
         <div className="flex flex-col gap-3 px-4 pb-[14px] pl-[44px] pr-4">
           {/* Pros */}
           <div className="flex gap-2">
-            <ThumbsUp className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--color-success-foreground)]" />
-            <p className="text-[13px] font-normal leading-[1.5] text-muted-foreground">
+            <ThumbsUp
+              className={cn(
+                'mt-0.5 h-3.5 w-3.5 shrink-0',
+                selected ? 'text-primary-foreground' : 'text-[var(--color-success-foreground)]'
+              )}
+            />
+            <p
+              className={cn(
+                'text-[13px] font-normal leading-[1.5]',
+                selected ? 'text-primary-foreground' : 'text-muted-foreground'
+              )}
+            >
               {pros}
             </p>
           </div>
           {/* Cons */}
           <div className="flex gap-2">
-            <ThumbsDown className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--color-error-foreground)]" />
-            <p className="text-[13px] font-normal leading-[1.5] text-muted-foreground">
+            <ThumbsDown
+              className={cn(
+                'mt-0.5 h-3.5 w-3.5 shrink-0',
+                selected ? 'text-primary-foreground' : 'text-[var(--color-error-foreground)]'
+              )}
+            />
+            <p
+              className={cn(
+                'text-[13px] font-normal leading-[1.5]',
+                selected ? 'text-primary-foreground' : 'text-muted-foreground'
+              )}
+            >
               {cons}
             </p>
           </div>

@@ -1,23 +1,59 @@
 use shared::enums::KnowledgeCategory;
-use shared::types::{KnowledgeEntry, PlanningContext, QaDecision};
+use shared::types::{KnowledgeEntry, QaDecision};
 
+/// Returns `(system_prompt, prompt)`.
 pub fn build_planning_prompt(
-    context: &PlanningContext,
+    story_description: &str,
+    knowledge: &[KnowledgeEntry],
+    codebase_context: &str,
+    grooming_decisions: &[QaDecision],
     previous_decisions: &[QaDecision],
-) -> String {
-    let adrs = filter_knowledge(&context.knowledge, KnowledgeCategory::Adr);
-    let api_docs = filter_knowledge(&context.knowledge, KnowledgeCategory::ApiDoc);
-    let grooming = fmt_decisions(&context.grooming_decisions);
+) -> (String, String) {
+    let adrs = filter_knowledge(knowledge, KnowledgeCategory::Adr);
+    let api_docs = filter_knowledge(knowledge, KnowledgeCategory::ApiDoc);
+    let grooming = fmt_decisions(grooming_decisions);
     let previous = fmt_decisions(previous_decisions);
 
-    format!(
-        r#"You are a senior software architect performing technical planning for a story.
+    let system = r#"You are a senior software architect performing technical planning for a story.
 
 Focus on: system architecture choices, database schema design, API contract design, \
 error handling strategy, concurrency / transaction considerations, and inter-service \
 dependencies. Do NOT re-ask questions already decided during grooming.
 
-## Architecture Decision Records
+For each question:
+- "rationale": One sentence explaining why this decision matters and its downstream consequences. Be specific to the story context.
+- "options": Each option is an object with "label" (concise choice), "pros" (2–4 sentences, honest advantages), and "cons" (2–4 sentences, honest disadvantages).
+- "recommended_option_index": Zero-based index of the option you recommend, grounded in the story context.
+
+If all critical decisions have already been made and you have no further questions, return `{"questions": []}`.
+
+Respond ONLY with valid JSON — no markdown fences, no extra text:
+{
+  "questions": [
+    {
+      "text": "Your question here?",
+      "domain": "planning",
+      "rationale": "This decision matters because...",
+      "recommended_option_index": 0,
+      "options": [
+        {
+          "label": "Option A",
+          "pros": "Advantages of option A.",
+          "cons": "Disadvantages of option A."
+        },
+        {
+          "label": "Option B",
+          "pros": "Advantages of option B.",
+          "cons": "Disadvantages of option B."
+        }
+      ]
+    }
+  ]
+}"#
+    .to_owned();
+
+    let prompt = format!(
+        r#"## Architecture Decision Records
 {adrs}
 
 ## API Documentation
@@ -35,38 +71,9 @@ dependencies. Do NOT re-ask questions already decided during grooming.
 ## Planning Decisions Already Made
 {previous}
 
-Generate 2–4 technical planning questions.
+Generate 0–4 technical planning questions.
 Each question must have 2–5 mutually-exclusive answer options.
-Do NOT ask questions already answered above.
-
-For each question:
-- "rationale": One sentence explaining why this decision matters and its downstream consequences. Be specific to the story context.
-- "options": Each option is an object with "label" (concise choice), "pros" (2–4 sentences, honest advantages), and "cons" (2–4 sentences, honest disadvantages).
-- "recommended_option_index": Zero-based index of the option you recommend, grounded in the story context.
-
-Respond ONLY with valid JSON — no markdown fences, no extra text:
-{{
-  "questions": [
-    {{
-      "text": "Your question here?",
-      "domain": "planning",
-      "rationale": "This decision matters because...",
-      "recommended_option_index": 0,
-      "options": [
-        {{
-          "label": "Option A",
-          "pros": "Advantages of option A.",
-          "cons": "Disadvantages of option A."
-        }},
-        {{
-          "label": "Option B",
-          "pros": "Advantages of option B.",
-          "cons": "Disadvantages of option B."
-        }}
-      ]
-    }}
-  ]
-}}"#,
+Do NOT ask questions already answered above."#,
         adrs = if adrs.is_empty() {
             "None documented.".into()
         } else {
@@ -77,15 +84,17 @@ Respond ONLY with valid JSON — no markdown fences, no extra text:
         } else {
             api_docs
         },
-        codebase = if context.codebase_context.is_empty() {
+        codebase = if codebase_context.is_empty() {
             "No codebase context available.".into()
         } else {
-            context.codebase_context.clone()
+            codebase_context.to_owned()
         },
-        story = context.story_description,
+        story = story_description,
         grooming = grooming,
         previous = previous,
-    )
+    );
+
+    (system, prompt)
 }
 
 fn filter_knowledge(knowledge: &[KnowledgeEntry], category: KnowledgeCategory) -> String {

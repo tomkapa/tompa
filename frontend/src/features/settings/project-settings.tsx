@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { InputGroup } from '@/components/ui/input'
 import { TextareaGroup } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
+import { Switch } from '@/components/ui/switch'
 import {
   useUpdateProject,
   getListProjectsQueryKey,
@@ -20,9 +21,52 @@ import {
 import { useToastStore } from '@/stores/toast-store'
 import type { ProjectResponse } from '@/api/generated/tompaAPI.schemas'
 
+
+const ALL_ROLE_IDS = [
+  'business_analyst',
+  'developer',
+  'ux_designer',
+  'security_engineer',
+  'marketing',
+] as const
+
+const GROOMING_ROLES = [
+  {
+    id: 'business_analyst',
+    name: 'Business Analyst',
+    description: 'Clarifies business value, user personas, acceptance criteria, and scope boundaries.',
+    required: true,
+  },
+  {
+    id: 'developer',
+    name: 'Developer',
+    description: 'Surfaces technical constraints, migration effort, and API compatibility concerns.',
+    required: false,
+  },
+  {
+    id: 'ux_designer',
+    name: 'UX Designer',
+    description: 'Reviews interaction patterns, accessibility needs, and design system reuse.',
+    required: false,
+  },
+  {
+    id: 'security_engineer',
+    name: 'Security Engineer',
+    description: 'Assesses PII handling, auth requirements, and compliance obligations.',
+    required: false,
+  },
+  {
+    id: 'marketing',
+    name: 'Marketing Specialist',
+    description: 'Evaluates positioning, analytics instrumentation, and launch strategy.',
+    required: false,
+  },
+] as const
+
 const TABS = [
   { id: 'project', label: 'Project Profile' },
   { id: 'registry', label: 'Container Registry' },
+  { id: 'qa', label: 'Q&A Configuration' },
 ]
 
 function slugify(name: string): string {
@@ -42,7 +86,6 @@ interface ProjectSettingsProps {
 
 export function ProjectSettings({ projectId, activeProject, projectSlug }: ProjectSettingsProps) {
   const [activeTab, setActiveTab] = React.useState('project')
-
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto">
       <div className="flex shrink-0 items-center justify-between">
@@ -51,10 +94,14 @@ export function ProjectSettings({ projectId, activeProject, projectSlug }: Proje
 
       <TabSwitcher tabs={TABS} activeId={activeTab} onChange={setActiveTab} className="self-start" />
 
-      {activeTab === 'project' ? (
+      {activeTab === 'project' && (
         <ProjectProfileTab projectId={projectId} activeProject={activeProject} projectSlug={projectSlug} />
-      ) : (
+      )}
+      {activeTab === 'registry' && (
         <ContainerRegistryTab projectId={projectId} />
+      )}
+      {activeTab === 'qa' && (
+        <QaConfigTab projectId={projectId} activeProject={activeProject} />
       )}
     </div>
   )
@@ -351,6 +398,107 @@ function ContainerRegistryTab({ projectId }: { projectId: string }) {
             AGENT_API_KEY={rawKey ?? 'cpk_your_key_here'}
           </code>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Q&A Configuration Tab ─────────────────────────────────────────────────────
+
+function QaConfigTab({
+  projectId,
+  activeProject,
+}: {
+  projectId: string
+  activeProject: ProjectResponse | undefined
+}) {
+  const queryClient = useQueryClient()
+
+  const defaultRoles = activeProject?.grooming_roles ?? [...ALL_ROLE_IDS]
+  const [enabledRoles, setEnabledRoles] = React.useState<string[]>(defaultRoles)
+
+  React.useEffect(() => {
+    if (activeProject) {
+      setEnabledRoles(activeProject.grooming_roles ?? [...ALL_ROLE_IDS])
+    }
+  }, [activeProject])
+
+  const isDirty = JSON.stringify([...enabledRoles].sort()) !== JSON.stringify([...defaultRoles].sort())
+
+  const updateProjectMutation = useUpdateProject({
+    mutation: {
+      onSuccess: (resp) => {
+        if (resp.status === 200) {
+          void queryClient.invalidateQueries({ queryKey: getListProjectsQueryKey() })
+          useToastStore.getState().addToast({ variant: 'success', title: 'Q&A configuration saved' })
+        }
+      },
+      onError: () => {
+        useToastStore.getState().addToast({ variant: 'error', title: 'Failed to save Q&A configuration' })
+      },
+    },
+  })
+
+  function handleToggle(roleId: string, enabled: boolean) {
+    if (roleId === 'business_analyst') return
+    setEnabledRoles((prev) =>
+      enabled ? [...prev, roleId] : prev.filter((id) => id !== roleId),
+    )
+  }
+
+  function handleSave() {
+    const ordered = ALL_ROLE_IDS.filter((id) => enabledRoles.includes(id))
+    updateProjectMutation.mutate({
+      id: projectId,
+      data: { grooming_roles: ordered },
+    })
+  }
+
+  function handleCancel() {
+    setEnabledRoles(activeProject?.grooming_roles ?? [...ALL_ROLE_IDS])
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="rounded-2xl border border-border bg-card p-6">
+        <div className="flex flex-col gap-1 mb-5">
+          <h2 className="text-sm font-semibold text-foreground">Q&amp;A Configuration</h2>
+          <p className="text-xs text-muted-foreground">
+            Configure which roles participate in the grooming Q&amp;A session. Changes apply to all new grooming rounds in this project.
+          </p>
+        </div>
+
+        <div className="flex flex-col divide-y divide-border">
+          {GROOMING_ROLES.map((role) => {
+            const isEnabled = enabledRoles.includes(role.id)
+            return (
+              <div key={role.id} className="flex items-center justify-between gap-4 py-4 first:pt-0 last:pb-0">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-sm font-medium text-foreground">{role.name}</span>
+                  {role.required ? (
+                    <span className="text-xs text-muted-foreground italic">Required — cannot be disabled</span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">{role.description}</span>
+                  )}
+                </div>
+                <Switch
+                  checked={isEnabled}
+                  disabled={role.required}
+                  onCheckedChange={(checked) => handleToggle(role.id, checked)}
+                />
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      <div className="flex items-center justify-end gap-3">
+        <Button variant="outline" onClick={handleCancel} disabled={!isDirty}>
+          Cancel
+        </Button>
+        <Button onClick={handleSave} disabled={!isDirty || updateProjectMutation.isPending}>
+          {updateProjectMutation.isPending ? 'Saving...' : 'Save Changes'}
+        </Button>
       </div>
     </div>
   )

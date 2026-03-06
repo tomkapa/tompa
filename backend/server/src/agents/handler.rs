@@ -76,6 +76,8 @@ fn extract_bearer(parts: &Parts) -> Option<String> {
 async fn handle_socket(socket: WebSocket, state: AppState, key_info: ContainerKeyInfo) {
     let key_id = key_info.key_id;
 
+    tracing::info!(%key_id, org_id = %key_info.org_id, "container agent connected");
+
     // Stamp last_connected_at (best-effort — do not abort on DB failure).
     let _ = key_repo::update_last_connected(&state.pool, key_id).await;
 
@@ -148,6 +150,8 @@ async fn handle_socket(socket: WebSocket, state: AppState, key_info: ContainerKe
     // avoid any delay.
     write_handle.abort();
     state.registry.unregister(key_id);
+
+    tracing::info!(%key_id, org_id = %key_info.org_id, "container agent disconnected");
 }
 
 /// Route an authenticated `ContainerToServer` message to the service layer.

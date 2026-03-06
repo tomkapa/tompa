@@ -16,7 +16,7 @@ COPY agent/setup-ui/ .
 RUN bun run build
 
 # ── Stage 2: Install cargo-chef ───────────────────────────────────────────
-FROM rust:1.93-slim AS chef
+FROM rust:1.93-slim-bookworm AS chef
 RUN apt-get update \
     && apt-get install -y --no-install-recommends pkg-config libssl-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -42,11 +42,19 @@ COPY --from=ui-builder /ui/dist agent/setup-ui/dist
 ENV SQLX_OFFLINE=true
 RUN cargo build --release --bin agent
 
-# ── Stage 6: Minimal runtime image ───────────────────────────────────────
+# ── Stage 6: Install claude CLI (native binary) ───────────────────────────
+FROM debian:bookworm-slim AS claude-installer
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL https://claude.ai/install.sh | bash
+
+# ── Stage 7: Minimal runtime image ───────────────────────────────────────
 FROM debian:bookworm-slim AS runtime
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
+    && apt-get install -y --no-install-recommends ca-certificates git \
     && rm -rf /var/lib/apt/lists/*
+COPY --from=claude-installer /root/.local/bin/claude /usr/local/bin/claude
 COPY --from=builder /app/target/release/agent /usr/local/bin/agent
 EXPOSE 3001
 ENTRYPOINT ["agent"]

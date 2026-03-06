@@ -29,7 +29,7 @@ pub async fn list_knowledge(
     project_id: Option<Uuid>,
     story_id: Option<Uuid>,
 ) -> Result<Vec<KnowledgeResponse>, ApiError> {
-    let org_id = tx.auth.org_id;
+    let org_id = tx.org_id;
     let rows = repo::list_knowledge(tx, org_id, project_id, story_id).await?;
     Ok(rows.into_iter().map(to_response).collect())
 }
@@ -50,7 +50,7 @@ pub async fn create_knowledge(
     if !is_valid_category(&category) {
         return Err(KnowledgeError::InvalidCategory.into());
     }
-    let org_id = tx.auth.org_id;
+    let org_id = tx.org_id;
     let row = repo::create_knowledge(
         tx,
         org_id,
@@ -84,7 +84,7 @@ pub async fn update_knowledge(
     {
         return Err(KnowledgeError::InvalidCategory.into());
     }
-    let org_id = tx.auth.org_id;
+    let org_id = tx.org_id;
     let row = repo::update_knowledge(
         tx,
         id,
@@ -99,7 +99,7 @@ pub async fn update_knowledge(
 }
 
 pub async fn delete_knowledge(tx: &mut OrgTx, id: Uuid) -> Result<(), ApiError> {
-    let org_id = tx.auth.org_id;
+    let org_id = tx.org_id;
     let deleted = repo::soft_delete_knowledge(tx, id, org_id).await?;
     if !deleted {
         return Err(ApiError::NotFound);

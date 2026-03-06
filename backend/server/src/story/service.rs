@@ -48,7 +48,7 @@ pub async fn list_stories(
     tx: &mut OrgTx,
     project_id: Uuid,
 ) -> Result<Vec<StoryResponse>, ApiError> {
-    let org_id = tx.auth.org_id;
+    let org_id = tx.org_id;
     let rows = repo::list_stories(tx, org_id, project_id).await?;
     // For list, return empty task slices (not needed for list view)
     let stories = rows.into_iter().map(|r| to_response(r, vec![])).collect();
@@ -56,7 +56,7 @@ pub async fn list_stories(
 }
 
 pub async fn get_story(tx: &mut OrgTx, id: Uuid) -> Result<StoryResponse, ApiError> {
-    let org_id = tx.auth.org_id;
+    let org_id = tx.org_id;
     let row = repo::get_story(tx, id, org_id)
         .await?
         .ok_or(ApiError::NotFound)?;
@@ -76,7 +76,7 @@ pub async fn create_story(
         return Err(StoryError::InvalidStoryType.into());
     }
 
-    let org_id = tx.auth.org_id;
+    let org_id = tx.org_id;
 
     // New stories are appended after the current last story in the project
     let max_rank = repo::get_max_rank(tx, req.project_id).await?;
@@ -114,7 +114,7 @@ pub async fn update_story(
         return Err(StoryError::InvalidPipelineStage.into());
     }
 
-    let org_id = tx.auth.org_id;
+    let org_id = tx.org_id;
 
     // Fetch current story to validate the status transition
     let current = repo::get_story(tx, id, org_id)
@@ -144,7 +144,7 @@ pub async fn update_story(
 }
 
 pub async fn delete_story(tx: &mut OrgTx, id: Uuid) -> Result<(), ApiError> {
-    let org_id = tx.auth.org_id;
+    let org_id = tx.org_id;
     let deleted = repo::soft_delete_story(tx, id, org_id).await?;
     if !deleted {
         return Err(ApiError::NotFound);
@@ -163,7 +163,7 @@ pub async fn update_rank(
         ));
     }
 
-    let org_id = tx.auth.org_id;
+    let org_id = tx.org_id;
 
     // Verify the target story exists
     repo::get_story(tx, id, org_id)
@@ -201,7 +201,7 @@ pub async fn update_rank(
 }
 
 pub async fn start_story(tx: &mut OrgTx, id: Uuid) -> Result<StoryResponse, ApiError> {
-    let org_id = tx.auth.org_id;
+    let org_id = tx.org_id;
 
     let current = repo::get_story(tx, id, org_id)
         .await?
@@ -237,7 +237,7 @@ pub async fn approve_refined_description(
     id: Uuid,
     req: ApproveRefinedDescriptionRequest,
 ) -> Result<(StoryResponse, String), ApiError> {
-    let org_id = tx.auth.org_id;
+    let org_id = tx.org_id;
     let current = repo::get_story(tx, id, org_id)
         .await?
         .ok_or(ApiError::NotFound)?;

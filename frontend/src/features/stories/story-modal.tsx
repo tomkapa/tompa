@@ -490,7 +490,7 @@ export function StoryModal() {
     const round = apiRounds.find((r) =>
       r.content.questions.some((q) => q.id === questionId),
     )
-    if (!round) return
+    if (!round || round.status !== 'active') return
     const selectedOption =
       answerIndex != null ? round.content.questions.find((q) => q.id === questionId)?.options[answerIndex] : null
     submitAnswerMutation.mutate({

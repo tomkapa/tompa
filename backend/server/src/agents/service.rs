@@ -2,14 +2,10 @@ use uuid::Uuid;
 
 use shared::{
     messages::{ContainerToServer, ServerToContainer},
-    types::{
-        Answer, AnswerContext, GroomingContext, PauseQuestion, PlanningContext, QaRoundContent,
-        Question, TaskContext,
-    },
+    types::{KnowledgeEntry, QaDecision},
 };
 
 use crate::{
-    auth::types::AuthContext,
     container_keys::types::ContainerKeyInfo,
     db::{OrgTx, new_id},
     errors::ApiError,
@@ -23,7 +19,7 @@ use crate::{
     task::repo as task_repo,
 };
 
-use super::registry::ConnectionRegistry;
+use super::{prompts, registry::ConnectionRegistry, session_repo};
 
 // ── Incoming message dispatch ─────────────────────────────────────────────────
 
@@ -32,34 +28,12 @@ use super::registry::ConnectionRegistry;
 /// single bad message.
 pub async fn handle_message(state: &AppState, key_info: &ContainerKeyInfo, msg: ContainerToServer) {
     let result = match msg {
-        ContainerToServer::QuestionBatch {
-            story_id,
-            task_id,
-            round,
-        } => on_question_batch(state, key_info, story_id, task_id, round).await,
-        ContainerToServer::TaskDecomposition {
-            story_id,
-            proposed_tasks,
-        } => on_task_decomposition(state, key_info, story_id, proposed_tasks).await,
-        ContainerToServer::TaskPaused { task_id, question } => {
-            on_task_paused(state, key_info, task_id, question).await
+        ContainerToServer::ExecutionResult { session_id, output } => {
+            on_execution_result(state, key_info, session_id, output).await
         }
-        ContainerToServer::TaskCompleted {
-            task_id,
-            commit_sha,
-        } => on_task_completed(state, key_info, task_id, &commit_sha).await,
-        ContainerToServer::TaskFailed { task_id, error } => {
-            on_task_failed(state, key_info, task_id, &error).await
+        ContainerToServer::ExecutionFailed { session_id, error } => {
+            on_execution_failed(state, key_info, session_id, &error).await
         }
-        ContainerToServer::RefinedDescription {
-            story_id,
-            stage,
-            refined_description,
-        } => on_refined_description(state, key_info, story_id, &stage, &refined_description).await,
-        ContainerToServer::StatusUpdate {
-            task_id,
-            status_text,
-        } => on_status_update(state, key_info, task_id, &status_text).await,
         ContainerToServer::Pong => Ok(()),
     };
 
@@ -68,90 +42,246 @@ pub async fn handle_message(state: &AppState, key_info: &ContainerKeyInfo, msg: 
     }
 }
 
-/// Build an `AuthContext` for container-originated requests.
-fn container_auth(key_info: &ContainerKeyInfo) -> AuthContext {
-    AuthContext {
-        user_id: Uuid::nil(),
-        org_id: key_info.org_id,
-        role: "container".into(),
+
+// ── Incoming handlers ─────────────────────────────────────────────────────────
+
+async fn on_execution_result(
+    state: &AppState,
+    key_info: &ContainerKeyInfo,
+    session_id: Uuid,
+    output: serde_json::Value,
+) -> Result<(), ApiError> {
+    let session = session_repo::load_session(&state.pool, session_id)
+        .await?
+        .ok_or_else(|| {
+            ApiError::Internal(anyhow::anyhow!(
+                "no session found for session_id={session_id}"
+            ))
+        })?;
+
+    let stage = session.stage.as_str();
+    tracing::info!(
+        session_id = %session.session_id,
+        stage,
+        story_id = ?session.story_id,
+        task_id = ?session.task_id,
+        "execution result received"
+    );
+
+    match stage {
+        "grooming" | "planning" => on_qa_result(state, key_info, &session, output).await,
+        "description_refinement" => on_refinement_result(state, key_info, &session, output).await,
+        "decomposition" => on_decomposition_result(state, key_info, &session, output).await,
+        "task_qa" => on_task_qa_result(state, key_info, &session, output).await,
+        "implementation" => on_implementation_result(state, key_info, &session, output).await,
+        other => {
+            tracing::warn!(session_id = %session.session_id, stage = %other, "unknown session stage");
+            Ok(())
+        }
     }
 }
 
-// ── Incoming handlers (private) ───────────────────────────────────────────────
-
-async fn on_question_batch(
+/// Handle Q&A results from grooming or planning stages.
+///
+/// Grooming uses a sequential chain: role 0 produces `{"questions":[...]}`,
+/// roles 1-N produce `{"augmentations":[...],"questions":[...]}`.  Each role
+/// merges its output into the shared round then triggers the next role until
+/// the chain is exhausted, at which point the round is broadcast.
+async fn on_qa_result(
     state: &AppState,
     key_info: &ContainerKeyInfo,
-    story_id: Uuid,
-    task_id: Option<Uuid>,
-    round: QaRoundContent,
+    session: &session_repo::AgentSession,
+    output: serde_json::Value,
 ) -> Result<(), ApiError> {
     let org_id = key_info.org_id;
-    let mut tx = OrgTx::begin(&state.pool, container_auth(key_info)).await?;
+    let story_id = session.story_id.ok_or(ApiError::NotFound)?;
+    let stage = &session.stage;
 
-    // Determine stage from context: task-scoped rounds are always "task_qa";
-    // story-level rounds inherit the story's current pipeline_stage.
-    let stage = if task_id.is_some() {
-        "task_qa".to_string()
-    } else {
-        story_repo::get_story(&mut tx, story_id, org_id)
+    let output = normalize_json_output(output)
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to normalise QA output: {e}")))?;
+
+    if let Some(qa_round_id) = session.qa_round_id {
+        // ── Sequential-grooming path ──────────────────────────────────────────
+        // Resolve which roles are enabled for this project, then find the
+        // current role's position within that filtered list.
+        let role_id = session.role.as_deref().unwrap_or("");
+        let project_role_ids = fetch_project_grooming_roles(&state.pool, session.project_id).await?;
+        let enabled_roles = enabled_grooming_roles(&project_role_ids);
+        let pos_in_enabled = enabled_roles
+            .iter()
+            .position(|r| r.id == role_id)
+            .ok_or_else(|| {
+                ApiError::Internal(anyhow::anyhow!("grooming role '{role_id}' not in enabled list for project"))
+            })?;
+
+        // Load the current accumulated questions from the shared round.
+        let mut tx = OrgTx::begin(&state.pool, org_id).await?;
+        let round = qa_repo::get_round(&mut tx, qa_round_id, org_id)
             .await?
-            .ok_or(ApiError::NotFound)?
-            .pipeline_stage
-            .unwrap_or_else(|| "grooming".to_string())
-    };
+            .ok_or_else(|| {
+                ApiError::Internal(anyhow::anyhow!("qa_round {qa_round_id} not found"))
+            })?;
+        tx.commit().await?;
 
-    let max_round = qa_repo::get_max_round_number(&mut tx, story_id, task_id, &stage)
+        let mut content: QaContent = serde_json::from_value(round.content)
+            .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to parse round content: {e}")))?;
+
+        if pos_in_enabled == 0 {
+            // First enabled role: simple `{"questions":[...]}` format.
+            let round_output: QaRoundOutput = serde_json::from_value(output)
+                .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to parse QA output: {e}")))?;
+            let new_questions = output_to_qa_questions(round_output.questions);
+            content.questions.extend(new_questions);
+        } else {
+            // Subsequent role: `{"augmentations":[...],"questions":[...]}` format.
+            let seq_output: SequentialQaRoundOutput = serde_json::from_value(output)
+                .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to parse sequential QA output: {e}")))?;
+
+            apply_augmentations(&mut content.questions, seq_output.augmentations);
+            content.questions.extend(output_to_qa_questions(seq_output.questions));
+        }
+
+        // Persist the updated content.
+        let content_json = serde_json::to_value(&content)
+            .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to serialise QA content: {e}")))?;
+        let mut tx = OrgTx::begin(&state.pool, org_id).await?;
+        qa_repo::update_round_content(&mut tx, qa_round_id, org_id, &content_json)
+            .await?
+            .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("qa_round {qa_round_id} not found during update")))?;
+        tx.commit().await?;
+
+        if let Some(&next_role) = enabled_roles.get(pos_in_enabled + 1) {
+            // Dispatch the next enabled role with the accumulated questions as context.
+            dispatch_next_grooming_role(
+                state,
+                org_id,
+                session.project_id,
+                story_id,
+                qa_round_id,
+                next_role,
+                &content.questions,
+            )
+            .await;
+        } else {
+            // All enabled roles done — broadcast or converge.
+            if content.questions.is_empty() {
+                dispatch_description_refinement(state, org_id, session.project_id, story_id, "grooming").await;
+            } else {
+                state.broadcaster.broadcast(
+                    org_id,
+                    SseEvent::NewQuestion {
+                        story_id,
+                        task_id: None,
+                        round_id: qa_round_id,
+                    },
+                );
+            }
+        }
+    } else {
+        // ── Single-role path (planning, etc.) ─────────────────────────────────
+        let round_output: QaRoundOutput = serde_json::from_value(output)
+            .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to parse QA output: {e}")))?;
+        let questions = output_to_qa_questions(round_output.questions);
+
+        if questions.is_empty() {
+            // No further questions → converge → description refinement
+            dispatch_description_refinement(state, org_id, session.project_id, story_id, stage).await;
+        } else {
+            // Create a fresh round for this response.
+            let mut tx = OrgTx::begin(&state.pool, key_info.org_id).await?;
+
+            let max_round = qa_repo::get_max_round_number(&mut tx, story_id, None, stage)
+                .await?
+                .unwrap_or(0);
+
+            let content_value = serde_json::to_value(&QaContent {
+                questions,
+                course_correction: None,
+            })
+            .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to serialise QA content: {e}")))?;
+
+            let row = qa_repo::create_round(
+                &mut tx,
+                org_id,
+                story_id,
+                None,
+                stage,
+                max_round + 1,
+                &content_value,
+            )
+            .await?;
+
+            tx.commit().await?;
+
+            state.broadcaster.broadcast(
+                org_id,
+                SseEvent::NewQuestion {
+                    story_id,
+                    task_id: None,
+                    round_id: row.id,
+                },
+            );
+        }
+    }
+
+    Ok(())
+}
+
+/// Handle refined description output (plain text).
+async fn on_refinement_result(
+    state: &AppState,
+    key_info: &ContainerKeyInfo,
+    session: &session_repo::AgentSession,
+    output: serde_json::Value,
+) -> Result<(), ApiError> {
+    let org_id = key_info.org_id;
+    let story_id = session.story_id.ok_or(ApiError::NotFound)?;
+    let stage = session.role.as_deref().unwrap_or("grooming");
+
+    let refined_description = output.as_str().unwrap_or("").trim().to_string();
+
+    let mut tx = OrgTx::begin(&state.pool, key_info.org_id).await?;
+
+    story_repo::set_pending_refined_description(&mut tx, story_id, org_id, &refined_description)
         .await?
-        .unwrap_or(0);
-
-    let content_value = serde_json::to_value(&QaContent {
-        questions: into_qa_questions(round.questions),
-        course_correction: None,
-    })
-    .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to serialise QA content: {e}")))?;
-
-    let row = qa_repo::create_round(
-        &mut tx,
-        org_id,
-        story_id,
-        task_id,
-        &stage,
-        max_round + 1,
-        &content_value,
-    )
-    .await?;
+        .ok_or(ApiError::NotFound)?;
 
     tx.commit().await?;
 
     state.broadcaster.broadcast(
         org_id,
-        SseEvent::NewQuestion {
+        SseEvent::RefinedDescriptionReady {
             story_id,
-            task_id,
-            round_id: row.id,
+            stage: stage.to_string(),
         },
     );
 
     Ok(())
 }
 
-async fn on_task_decomposition(
+/// Handle decomposition output: `{ "tasks": [...] }`
+async fn on_decomposition_result(
     state: &AppState,
     key_info: &ContainerKeyInfo,
-    story_id: Uuid,
-    proposed_tasks: Vec<shared::types::ProposedTask>,
+    session: &session_repo::AgentSession,
+    output: serde_json::Value,
 ) -> Result<(), ApiError> {
     let org_id = key_info.org_id;
-    let mut tx = OrgTx::begin(&state.pool, container_auth(key_info)).await?;
+    let story_id = session.story_id.ok_or(ApiError::NotFound)?;
 
-    // Insert tasks in proposal order and keep the assigned IDs for dependency wiring.
-    let mut task_ids: Vec<Uuid> = Vec::with_capacity(proposed_tasks.len());
-    for pt in &proposed_tasks {
-        let task_type_str = match pt.task_type {
-            shared::enums::TaskType::Design => "design",
-            shared::enums::TaskType::Test => "test",
-            shared::enums::TaskType::Code => "code",
+    let output = normalize_json_output(output)
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to normalise decomposition output: {e}")))?;
+    let decomposition: DecompositionOutput = serde_json::from_value(output)
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to parse decomposition: {e}")))?;
+
+    let mut tx = OrgTx::begin(&state.pool, key_info.org_id).await?;
+
+    let mut task_ids: Vec<Uuid> = Vec::with_capacity(decomposition.tasks.len());
+    for pt in &decomposition.tasks {
+        let task_type_str = match pt.task_type.as_str() {
+            "design" => "design",
+            "test" => "test",
+            _ => "code",
         };
         let row = task_repo::create_task(
             &mut tx,
@@ -167,8 +297,7 @@ async fn on_task_decomposition(
         task_ids.push(row.id);
     }
 
-    // Wire dependency edges: `depends_on` holds 0-based indices into proposed_tasks.
-    for (i, pt) in proposed_tasks.iter().enumerate() {
+    for (i, pt) in decomposition.tasks.iter().enumerate() {
         for &dep_idx in &pt.depends_on {
             let dep_idx = dep_idx as usize;
             if dep_idx < task_ids.len() && dep_idx != i {
@@ -202,21 +331,31 @@ async fn on_task_decomposition(
     Ok(())
 }
 
-async fn on_task_paused(
+/// Handle task Q&A output (same format as grooming/planning but scoped to a task).
+async fn on_task_qa_result(
     state: &AppState,
     key_info: &ContainerKeyInfo,
-    task_id: Uuid,
-    question: PauseQuestion,
+    session: &session_repo::AgentSession,
+    output: serde_json::Value,
 ) -> Result<(), ApiError> {
     let org_id = key_info.org_id;
-    let mut tx = OrgTx::begin(&state.pool, container_auth(key_info)).await?;
+    let story_id = session.story_id.ok_or(ApiError::NotFound)?;
+    let task_id = session.task_id.ok_or(ApiError::NotFound)?;
 
-    let story_id = task_repo::get_task(&mut tx, task_id, org_id)
-        .await?
-        .ok_or(ApiError::NotFound)?
-        .story_id;
+    let output = normalize_json_output(output)
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to normalise task QA output: {e}")))?;
+    let round: QaRoundOutput = serde_json::from_value(output)
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to parse task QA output: {e}")))?;
 
-    // Mark task as paused; store the question text as the status message.
+    if round.questions.is_empty() {
+        // No questions needed → skip directly to implementation.
+        dispatch_implementation(state, org_id, session.project_id, story_id, task_id).await;
+        return Ok(());
+    }
+
+    let mut tx = OrgTx::begin(&state.pool, key_info.org_id).await?;
+
+    // Mark task as paused
     task_repo::update_task(
         &mut tx,
         task_id,
@@ -227,7 +366,7 @@ async fn on_task_paused(
         None,
         Some("paused"),
         None,
-        Some(&question.text),
+        Some("Awaiting Q&A answers"),
     )
     .await?;
 
@@ -235,13 +374,15 @@ async fn on_task_paused(
         .await?
         .unwrap_or(0);
 
-    let content_value = serde_json::to_value(&QaContent {
-        questions: vec![QaQuestion {
+    let questions: Vec<QaQuestion> = round
+        .questions
+        .into_iter()
+        .map(|q| QaQuestion {
             id: new_id(),
-            text: question.text,
-            domain: question.domain,
-            rationale: question.rationale,
-            options: question
+            text: q.text,
+            domain: q.domain,
+            rationale: q.rationale,
+            options: q
                 .options
                 .into_iter()
                 .map(|o| crate::qa::types::QaQuestionOption {
@@ -250,17 +391,21 @@ async fn on_task_paused(
                     cons: o.cons,
                 })
                 .collect(),
-            recommended_option_index: question.recommended_option_index,
+            recommended_option_index: q.recommended_option_index,
             selected_answer_index: None,
             selected_answer_text: None,
             answered_by: None,
             answered_at: None,
-        }],
+        })
+        .collect();
+
+    let content_value = serde_json::to_value(&QaContent {
+        questions,
         course_correction: None,
     })
     .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to serialise QA content: {e}")))?;
 
-    let round = qa_repo::create_round(
+    let row = qa_repo::create_round(
         &mut tx,
         org_id,
         story_id,
@@ -286,12 +431,67 @@ async fn on_task_paused(
         SseEvent::NewQuestion {
             story_id,
             task_id: Some(task_id),
-            round_id: round.id,
+            round_id: row.id,
         },
     );
 
     Ok(())
 }
+
+/// Handle implementation result: `{ "commit_sha": "..." }` or `{ "error": "..." }`
+async fn on_implementation_result(
+    state: &AppState,
+    key_info: &ContainerKeyInfo,
+    session: &session_repo::AgentSession,
+    output: serde_json::Value,
+) -> Result<(), ApiError> {
+    let _org_id = key_info.org_id;
+    let task_id = session.task_id.ok_or(ApiError::NotFound)?;
+
+    if let Some(error) = output.get("error").and_then(|v| v.as_str()) {
+        on_task_failed(state, key_info, task_id, error).await
+    } else if let Some(sha) = output.get("commit_sha").and_then(|v| v.as_str()) {
+        on_task_completed(state, key_info, task_id, sha).await
+    } else {
+        tracing::warn!(task_id = %task_id, "implementation result has neither commit_sha nor error");
+        Ok(())
+    }
+}
+
+async fn on_execution_failed(
+    state: &AppState,
+    key_info: &ContainerKeyInfo,
+    session_id: Uuid,
+    error: &str,
+) -> Result<(), ApiError> {
+    let session = match session_repo::load_session(&state.pool, session_id).await? {
+        Some(s) => s,
+        None => {
+            tracing::error!(%session_id, "execution failed but no session found");
+            return Ok(());
+        }
+    };
+
+    match session.stage.as_str() {
+        "implementation" | "task_qa" => {
+            if let Some(task_id) = session.task_id {
+                on_task_failed(state, key_info, task_id, error).await?;
+            }
+        }
+        stage => {
+            tracing::error!(
+                %session_id,
+                %stage,
+                %error,
+                "execution failed for non-task stage"
+            );
+        }
+    }
+
+    Ok(())
+}
+
+// ── Task state helpers (reused by multiple handlers) ──────────────────────────
 
 async fn on_task_completed(
     state: &AppState,
@@ -300,15 +500,13 @@ async fn on_task_completed(
     commit_sha: &str,
 ) -> Result<(), ApiError> {
     let org_id = key_info.org_id;
-    let mut tx = OrgTx::begin(&state.pool, container_auth(key_info)).await?;
+    let mut tx = OrgTx::begin(&state.pool, key_info.org_id).await?;
 
     let story_id = task_repo::get_task(&mut tx, task_id, org_id)
         .await?
         .ok_or(ApiError::NotFound)?
         .story_id;
 
-    // State stays "running" — human must call /done to mark it complete.
-    // The commit SHA is embedded in ai_status_text so no schema change is required.
     let status_text = format!("Completed — awaiting review (sha: {commit_sha})");
     task_repo::update_task(
         &mut tx,
@@ -324,8 +522,6 @@ async fn on_task_completed(
     )
     .await?;
 
-    // If every task for the story is now at "running" (awaiting review) or "done",
-    // advance the story's pipeline to "review".
     let all_tasks = task_repo::list_tasks(&mut tx, story_id).await?;
     let all_reviewed = !all_tasks.is_empty()
         && all_tasks
@@ -371,8 +567,8 @@ async fn on_task_failed(
     task_id: Uuid,
     error: &str,
 ) -> Result<(), ApiError> {
-    let org_id = key_info.org_id;
-    let mut tx = OrgTx::begin(&state.pool, container_auth(key_info)).await?;
+    let mut tx = OrgTx::begin(&state.pool, key_info.org_id).await?;
+    let org_id = tx.org_id;
 
     let story_id = task_repo::get_task(&mut tx, task_id, org_id)
         .await?
@@ -407,400 +603,340 @@ async fn on_task_failed(
     Ok(())
 }
 
-async fn on_status_update(
+// ── Outgoing dispatch functions ───────────────────────────────────────────────
+
+/// Dispatch the first grooming Q&A round for a story — all roles in parallel,
+/// all contributing questions into the same shared `qa_round`.
+pub async fn dispatch_grooming(
     state: &AppState,
-    key_info: &ContainerKeyInfo,
-    task_id: Uuid,
-    status_text: &str,
-) -> Result<(), ApiError> {
-    let org_id = key_info.org_id;
-    let mut tx = OrgTx::begin(&state.pool, container_auth(key_info)).await?;
-
-    let story_id = task_repo::get_task(&mut tx, task_id, org_id)
-        .await?
-        .ok_or(ApiError::NotFound)?
-        .story_id;
-
-    task_repo::update_task(
-        &mut tx,
-        task_id,
-        org_id,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        Some(status_text),
-    )
-    .await?;
-
-    tx.commit().await?;
-
-    state.broadcaster.broadcast(
-        org_id,
-        SseEvent::TaskUpdated {
-            task_id,
-            story_id,
-            fields: vec!["ai_status_text".into()],
-        },
-    );
-
-    Ok(())
-}
-
-async fn on_refined_description(
-    state: &AppState,
-    key_info: &ContainerKeyInfo,
-    story_id: Uuid,
-    stage: &str,
-    refined_description: &str,
-) -> Result<(), ApiError> {
-    let org_id = key_info.org_id;
-    let mut tx = OrgTx::begin(&state.pool, container_auth(key_info)).await?;
-
-    story_repo::set_pending_refined_description(&mut tx, story_id, org_id, refined_description)
-        .await?
-        .ok_or(ApiError::NotFound)?;
-
-    tx.commit().await?;
-
-    state.broadcaster.broadcast(
-        org_id,
-        SseEvent::RefinedDescriptionReady {
-            story_id,
-            stage: stage.to_string(),
-        },
-    );
-
-    Ok(())
-}
-
-// ── Outgoing message triggers ─────────────────────────────────────────────────
-
-/// Send `StartGrooming` to the project's connected container.
-/// Called by the story service when a story moves to `in_progress`.
-pub async fn send_start_grooming(
-    state: &AppState,
-    project_id: Uuid,
-    story_id: Uuid,
-    context: GroomingContext,
-) {
-    if let Some(key_id) = find_connected_key(&state.pool, state.registry.as_ref(), project_id).await
-    {
-        let _ = state.registry.send_to(
-            key_id,
-            ServerToContainer::StartGrooming { story_id, context },
-        );
-    }
-}
-
-/// Send `StartPlanning` to the project's connected container.
-/// Called when grooming Q&A is complete and the AI assessment is SUFFICIENT.
-pub async fn send_start_planning(
-    state: &AppState,
-    project_id: Uuid,
-    story_id: Uuid,
-    context: PlanningContext,
-) {
-    if let Some(key_id) = find_connected_key(&state.pool, state.registry.as_ref(), project_id).await
-    {
-        let _ = state.registry.send_to(
-            key_id,
-            ServerToContainer::StartPlanning { story_id, context },
-        );
-    }
-}
-
-/// Forward completed answers to the container that originated the QA round.
-/// Includes full recovery context so the agent can process the answers even
-/// after a restart (no in-memory QA session).
-#[allow(clippy::too_many_arguments)]
-pub async fn send_answer_received(
-    state: &AppState,
-    project_id: Uuid,
     org_id: Uuid,
+    project_id: Uuid,
     story_id: Uuid,
-    stage: &str,
-    round_id: Uuid,
-    answers: Vec<Answer>,
-    questions: Vec<Question>,
+    description: &str,
 ) {
-    let key_id = match find_connected_key(&state.pool, state.registry.as_ref(), project_id).await {
-        Some(id) => id,
-        None => return,
-    };
+    tracing::info!(%story_id, %project_id, "dispatching grooming (sequential roles)");
 
-    // Build recovery context: prior decisions + grooming/planning context.
-    let prior_decisions = match build_prior_decisions(&state.pool, org_id, story_id, stage).await {
-        Ok(d) => d,
+    let round_id = match create_shared_grooming_round(&state.pool, org_id, story_id).await {
+        Ok(id) => id,
         Err(e) => {
-            tracing::error!(%round_id, %e, "failed to build prior decisions for AnswerReceived");
-            vec![]
+            tracing::error!(%story_id, %e, "failed to create shared grooming round");
+            return;
         }
     };
 
-    let (grooming_context, planning_context) = match stage {
-        "grooming" => {
-            let ctx = build_grooming_context(
-                &state.pool,
-                org_id,
-                project_id,
-                &fetch_story_description(&state.pool, org_id, story_id)
-                    .await
-                    .unwrap_or_default(),
-            )
-            .await
-            .ok();
-            (ctx, None)
-        }
-        "planning" => {
-            let ctx = build_planning_context(
-                &state.pool,
-                org_id,
-                project_id,
-                story_id,
-                &fetch_story_description(&state.pool, org_id, story_id)
-                    .await
-                    .unwrap_or_default(),
-            )
-            .await
-            .ok();
-            (None, ctx)
-        }
-        _ => (None, None),
-    };
+    let knowledge = fetch_knowledge(&state.pool, org_id, project_id)
+        .await
+        .unwrap_or_default();
 
-    let _ = state.registry.send_to(
-        key_id,
-        ServerToContainer::AnswerReceived {
-            round_id,
-            answers,
-            context: AnswerContext {
-                story_id,
-                stage: stage.to_string(),
-                questions,
-                prior_decisions,
-                grooming_context,
-                planning_context,
-            },
-        },
-    );
-}
+    // Only dispatch role 0 (business analyst); subsequent roles are chained in on_qa_result.
+    let role = &prompts::grooming::GROOMING_ROLES[0];
+    let (system_prompt, prompt) =
+        prompts::grooming::build_grooming_prompt(role, description, &knowledge, "", &[]);
 
-/// Send `StartTask` to the project's dev container and return the generated session ID.
-/// Returns `None` if no container is connected for the project.
-/// Called when a task's dependencies are met and it is ready for execution.
-pub async fn send_start_task(
-    state: &AppState,
-    project_id: Uuid,
-    story_id: Uuid,
-    task_id: Uuid,
-    context: TaskContext,
-) -> Option<String> {
-    let key_id = find_connected_key(&state.pool, state.registry.as_ref(), project_id).await?;
-    let session_id = Uuid::now_v7().to_string();
-    let _ = state.registry.send_to(
-        key_id,
-        ServerToContainer::StartTask {
-            story_id,
-            task_id,
-            session_id: session_id.clone(),
-            context,
-        },
-    );
-    Some(session_id)
-}
-
-/// Send `ResumeTask` to the dev container after a human answers a pause question.
-pub async fn send_resume_task(
-    state: &AppState,
-    project_id: Uuid,
-    task_id: Uuid,
-    session_id: String,
-    answer: Answer,
-) {
-    if let Some(key_id) = find_connected_key(&state.pool, state.registry.as_ref(), project_id).await
+    match session_repo::create_session(
+        &state.pool,
+        org_id,
+        project_id,
+        Some(story_id),
+        None,
+        "grooming",
+        Some(role.id),
+        Some(round_id),
+    )
+    .await
     {
-        let _ = state.registry.send_to(
-            key_id,
-            ServerToContainer::ResumeTask {
-                task_id,
-                session_id,
-                answer,
-            },
-        );
+        Ok(session_id) => {
+            send_execute(state, project_id, session_id, &system_prompt, &prompt).await;
+        }
+        Err(e) => tracing::error!(%story_id, role = role.id, %e, "failed to create grooming session"),
     }
 }
 
-/// Send `DescriptionApproved` to the project's connected container.
-pub async fn send_description_approved(
+/// Dispatch planning Q&A for a story.
+pub async fn dispatch_planning(state: &AppState, org_id: Uuid, project_id: Uuid, story_id: Uuid) {
+    tracing::info!(%story_id, %project_id, "dispatching planning");
+    let knowledge = fetch_knowledge(&state.pool, org_id, project_id)
+        .await
+        .unwrap_or_default();
+
+    let description = fetch_story_description(&state.pool, org_id, story_id)
+        .await
+        .unwrap_or_default();
+
+    let grooming_decisions = fetch_stage_decisions(&state.pool, org_id, story_id, "grooming")
+        .await
+        .unwrap_or_default();
+
+    let planning_decisions = fetch_stage_decisions(&state.pool, org_id, story_id, "planning")
+        .await
+        .unwrap_or_default();
+
+    let (system_prompt, prompt) = prompts::planning::build_planning_prompt(
+        &description,
+        &knowledge,
+        "",
+        &grooming_decisions,
+        &planning_decisions,
+    );
+
+    match session_repo::create_session(
+        &state.pool,
+        org_id,
+        project_id,
+        Some(story_id),
+        None,
+        "planning",
+        None,
+        None,
+    )
+    .await
+    {
+        Ok(session_id) => {
+            send_execute(state, project_id, session_id, &system_prompt, &prompt).await;
+        }
+        Err(e) => tracing::error!(%story_id, %e, "failed to create planning session"),
+    }
+}
+
+/// Dispatch description refinement after convergence.
+async fn dispatch_description_refinement(
     state: &AppState,
+    org_id: Uuid,
     project_id: Uuid,
     story_id: Uuid,
     stage: &str,
-    description: &str,
 ) {
-    if let Some(key_id) = find_connected_key(&state.pool, state.registry.as_ref(), project_id).await
+    tracing::info!(%story_id, %project_id, stage, "dispatching description refinement");
+    let description = fetch_story_description(&state.pool, org_id, story_id)
+        .await
+        .unwrap_or_default();
+
+    let decisions = fetch_stage_decisions(&state.pool, org_id, story_id, stage)
+        .await
+        .unwrap_or_default();
+
+    let (system_prompt, prompt) =
+        prompts::description_refinement::build_refinement_prompt(&description, &decisions, stage);
+
+    match session_repo::create_session(
+        &state.pool,
+        org_id,
+        project_id,
+        Some(story_id),
+        None,
+        "description_refinement",
+        Some(stage),
+        None,
+    )
+    .await
     {
-        let _ = state.registry.send_to(
-            key_id,
-            ServerToContainer::DescriptionApproved {
-                story_id,
-                stage: stage.to_string(),
-                description: description.to_string(),
-            },
-        );
+        Ok(session_id) => {
+            send_execute(state, project_id, session_id, &system_prompt, &prompt).await;
+        }
+        Err(e) => tracing::error!(%story_id, %e, "failed to create refinement session"),
     }
 }
 
-// ── Context builders ──────────────────────────────────────────────────────────
-
-/// Build a `GroomingContext` for a story that is starting grooming.
-/// Opens its own transaction so it can be called after the handler's TX has committed.
-pub async fn build_grooming_context(
-    pool: &sqlx::PgPool,
-    org_id: Uuid,
-    project_id: Uuid,
-    description: &str,
-) -> Result<GroomingContext, ApiError> {
-    let knowledge = fetch_knowledge(pool, org_id, project_id).await?;
-    Ok(GroomingContext {
-        story_description: description.to_string(),
-        knowledge,
-        codebase_context: String::new(),
-    })
-}
-
-/// Build a `PlanningContext` for a bug story that skips grooming.
-/// Opens its own transaction so it can be called after the handler's TX has committed.
-pub async fn build_planning_context(
-    pool: &sqlx::PgPool,
+/// Dispatch decomposition after planning is complete.
+pub async fn dispatch_decomposition(
+    state: &AppState,
     org_id: Uuid,
     project_id: Uuid,
     story_id: Uuid,
-    description: &str,
-) -> Result<PlanningContext, ApiError> {
-    let knowledge = fetch_knowledge(pool, org_id, project_id).await?;
+) {
+    tracing::info!(%story_id, %project_id, "dispatching task decomposition");
+    let description = fetch_story_description(&state.pool, org_id, story_id)
+        .await
+        .unwrap_or_default();
 
-    // Fetch any grooming decisions already recorded for this story.
-    let mut tx = pool.begin().await?;
-    sqlx::query("SELECT set_config('app.org_id', $1, true)")
-        .bind(org_id.to_string())
-        .execute(&mut *tx)
-        .await?;
-    let rounds =
-        qa_repo::list_rounds(&mut tx, org_id, Some(story_id), None, Some("grooming")).await?;
-    let grooming_decisions = extract_decisions(&rounds)?;
-    tx.commit().await?;
+    let grooming_decisions = fetch_stage_decisions(&state.pool, org_id, story_id, "grooming")
+        .await
+        .unwrap_or_default();
+    let planning_decisions = fetch_stage_decisions(&state.pool, org_id, story_id, "planning")
+        .await
+        .unwrap_or_default();
 
-    Ok(PlanningContext {
-        story_description: description.to_string(),
-        grooming_decisions,
-        knowledge,
-        codebase_context: String::new(),
-    })
+    let (system_prompt, prompt) = prompts::task_decomposition::build_decomposition_prompt(
+        &description,
+        "",
+        &grooming_decisions,
+        &planning_decisions,
+    );
+
+    match session_repo::create_session(
+        &state.pool,
+        org_id,
+        project_id,
+        Some(story_id),
+        None,
+        "decomposition",
+        None,
+        None,
+    )
+    .await
+    {
+        Ok(session_id) => {
+            send_execute(state, project_id, session_id, &system_prompt, &prompt).await;
+        }
+        Err(e) => tracing::error!(%story_id, %e, "failed to create decomposition session"),
+    }
 }
 
-/// Fetch knowledge entries (org + project level) without RLS — uses pool directly.
-async fn fetch_knowledge(
-    pool: &sqlx::PgPool,
+/// Dispatch the next round of Q&A after all answers are submitted.
+/// Re-dispatches the same stage so the LLM can self-converge (return empty
+/// questions when it has no further questions).
+pub async fn dispatch_next_round(
+    state: &AppState,
     org_id: Uuid,
     project_id: Uuid,
-) -> Result<Vec<shared::types::KnowledgeEntry>, ApiError> {
-    let rows = sqlx::query_as::<_, crate::knowledge::repo::KnowledgeRow>(
-        r#"
-        SELECT id, org_id, project_id, story_id, category, title, content, created_at, updated_at
-        FROM knowledge_entries
-        WHERE deleted_at IS NULL
-          AND org_id = $1
-          AND (
-              (project_id IS NULL AND story_id IS NULL)
-              OR (project_id = $2 AND story_id IS NULL)
-          )
-        ORDER BY created_at
-        "#,
-    )
-    .bind(org_id)
-    .bind(project_id)
-    .fetch_all(pool)
-    .await?;
-
-    Ok(to_knowledge_entries(rows))
-}
-
-fn to_knowledge_entries(
-    rows: Vec<crate::knowledge::repo::KnowledgeRow>,
-) -> Vec<shared::types::KnowledgeEntry> {
-    rows.into_iter()
-        .map(|r| shared::types::KnowledgeEntry {
-            title: r.title,
-            content: r.content,
-            category: parse_knowledge_category(&r.category),
-        })
-        .collect()
-}
-
-fn parse_knowledge_category(s: &str) -> shared::enums::KnowledgeCategory {
-    use shared::enums::KnowledgeCategory;
-    match s {
-        "convention" => KnowledgeCategory::Convention,
-        "adr" => KnowledgeCategory::Adr,
-        "api_doc" => KnowledgeCategory::ApiDoc,
-        "design_system" => KnowledgeCategory::DesignSystem,
-        _ => KnowledgeCategory::Custom,
-    }
-}
-
-/// Extract `QaDecision`s from persisted rounds (used for planning context).
-fn extract_decisions(
-    rounds: &[crate::qa::repo::QaRoundRow],
-) -> Result<Vec<shared::types::QaDecision>, ApiError> {
-    let mut decisions = Vec::new();
-    for round in rounds {
-        let content: QaContent = serde_json::from_value(round.content.clone())
-            .map_err(|e| ApiError::Internal(anyhow::anyhow!("bad QA content: {e}")))?;
-        for q in content.questions {
-            if let (Some(text), Some(domain)) = (q.selected_answer_text, Some(q.domain)) {
-                decisions.push(shared::types::QaDecision {
-                    question_text: q.text,
-                    answer_text: text,
-                    domain,
-                });
-            }
+    story_id: Uuid,
+    stage: &str,
+    task_id: Option<Uuid>,
+) {
+    if let Some(tid) = task_id {
+        // Task-level Q&A: dispatch implementation with the new answers.
+        dispatch_implementation(state, org_id, project_id, story_id, tid).await;
+    } else {
+        // Story-level Q&A: re-dispatch the same stage for the next round.
+        match stage {
+            "grooming" => dispatch_next_grooming_round(state, org_id, project_id, story_id).await,
+            "planning" => dispatch_planning(state, org_id, project_id, story_id).await,
+            _ => {}
         }
     }
-    Ok(decisions)
+}
+
+/// Dispatch implementation for a specific task.
+pub async fn dispatch_implementation(
+    state: &AppState,
+    org_id: Uuid,
+    project_id: Uuid,
+    story_id: Uuid,
+    task_id: Uuid,
+) {
+    tracing::info!(%task_id, %story_id, %project_id, "dispatching implementation");
+    let knowledge = fetch_knowledge(&state.pool, org_id, project_id)
+        .await
+        .unwrap_or_default();
+
+    let story_decisions = fetch_all_story_decisions(&state.pool, org_id, story_id)
+        .await
+        .unwrap_or_default();
+
+    let task_description = fetch_task_description(&state.pool, org_id, task_id)
+        .await
+        .unwrap_or_default();
+
+    let (system_prompt, prompt) = prompts::implementation::build_implementation_prompt(
+        &task_description,
+        &knowledge,
+        &story_decisions,
+        &[], // sibling decisions not tracked yet
+    );
+
+    match session_repo::create_session(
+        &state.pool,
+        org_id,
+        project_id,
+        Some(story_id),
+        Some(task_id),
+        "implementation",
+        None,
+        None,
+    )
+    .await
+    {
+        Ok(session_id) => {
+            send_execute(state, project_id, session_id, &system_prompt, &prompt).await;
+        }
+        Err(e) => tracing::error!(%task_id, %e, "failed to create implementation session"),
+    }
+}
+
+/// Dispatch the next grooming round — all roles in parallel, with existing decisions as context.
+async fn dispatch_next_grooming_round(
+    state: &AppState,
+    org_id: Uuid,
+    project_id: Uuid,
+    story_id: Uuid,
+) {
+    tracing::info!(%story_id, %project_id, "dispatching next grooming round (sequential roles)");
+
+    let round_id = match create_shared_grooming_round(&state.pool, org_id, story_id).await {
+        Ok(id) => id,
+        Err(e) => {
+            tracing::error!(%story_id, %e, "failed to create shared grooming round");
+            return;
+        }
+    };
+
+    let description = fetch_story_description(&state.pool, org_id, story_id)
+        .await
+        .unwrap_or_default();
+
+    let knowledge = fetch_knowledge(&state.pool, org_id, project_id)
+        .await
+        .unwrap_or_default();
+
+    let decisions = fetch_stage_decisions(&state.pool, org_id, story_id, "grooming")
+        .await
+        .unwrap_or_default();
+
+    // Only dispatch role 0; the chain continues in on_qa_result.
+    let role = &prompts::grooming::GROOMING_ROLES[0];
+    let (system_prompt, prompt) =
+        prompts::grooming::build_grooming_prompt(role, &description, &knowledge, "", &decisions);
+
+    match session_repo::create_session(
+        &state.pool,
+        org_id,
+        project_id,
+        Some(story_id),
+        None,
+        "grooming",
+        Some(role.id),
+        Some(round_id),
+    )
+    .await
+    {
+        Ok(session_id) => {
+            send_execute(state, project_id, session_id, &system_prompt, &prompt).await;
+        }
+        Err(e) => tracing::error!(%story_id, role = role.id, %e, "failed to create next grooming session"),
+    }
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
-/// Convert the wire-format question list to the server-side `QaQuestion` format.
-/// The per-question answer fields start as `None` (unanswered).
-fn into_qa_questions(questions: Vec<shared::types::Question>) -> Vec<QaQuestion> {
-    questions
-        .into_iter()
-        .map(|q| QaQuestion {
-            id: q.id,
-            text: q.text,
-            domain: q.domain,
-            rationale: q.rationale,
-            options: q
-                .options
-                .into_iter()
-                .map(|o| crate::qa::types::QaQuestionOption {
-                    label: o.label,
-                    pros: o.pros,
-                    cons: o.cons,
-                })
-                .collect(),
-            recommended_option_index: q.recommended_option_index,
-            selected_answer_index: None,
-            selected_answer_text: None,
-            answered_by: None,
-            answered_at: None,
-        })
-        .collect()
+/// Send an `Execute` message to the container connected for the given project.
+async fn send_execute(
+    state: &AppState,
+    project_id: Uuid,
+    session_id: Uuid,
+    system_prompt: &str,
+    prompt: &str,
+) {
+    match find_connected_key(&state.pool, state.registry.as_ref(), project_id).await {
+        Some(key_id) => {
+            tracing::info!(%project_id, %session_id, "sending Execute to container");
+            let _ = state.registry.send_to(
+                key_id,
+                ServerToContainer::Execute {
+                    session_id,
+                    system_prompt: system_prompt.to_string(),
+                    prompt: prompt.to_string(),
+                },
+            );
+        }
+        None => {
+            tracing::warn!(
+                %project_id,
+                %session_id,
+                "no container agent connected for project — execute dropped; \
+                 ensure the agent is running and connected via /ws/container"
+            );
+        }
+    }
 }
 
 /// Return the first `key_id` from the candidates that has a live WebSocket connection.
@@ -827,7 +963,240 @@ async fn find_connected_key(
     find_key_in_registry(&ids, registry)
 }
 
-/// Fetch the story description directly (pool-level, no RLS) for enriching messages.
+/// Fetch the enabled grooming role IDs for a project (pool-level, no RLS needed).
+async fn fetch_project_grooming_roles(
+    pool: &sqlx::PgPool,
+    project_id: Uuid,
+) -> Result<Vec<String>, ApiError> {
+    let row: (Vec<String>,) = sqlx::query_as(
+        "SELECT grooming_roles FROM projects WHERE id = $1 AND deleted_at IS NULL",
+    )
+    .bind(project_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(row.0)
+}
+
+/// Filter `GROOMING_ROLES` to only those whose IDs appear in `role_ids`,
+/// preserving the canonical order.
+fn enabled_grooming_roles(
+    role_ids: &[String],
+) -> Vec<&'static prompts::grooming::GroomingRole> {
+    prompts::grooming::GROOMING_ROLES
+        .iter()
+        .filter(|r| role_ids.iter().any(|id| id.as_str() == r.id))
+        .collect()
+}
+
+/// Fetch knowledge entries (org + project level) without RLS — uses pool directly.
+async fn fetch_knowledge(
+    pool: &sqlx::PgPool,
+    org_id: Uuid,
+    project_id: Uuid,
+) -> Result<Vec<KnowledgeEntry>, ApiError> {
+    let rows = sqlx::query_as::<_, crate::knowledge::repo::KnowledgeRow>(
+        r#"
+        SELECT id, org_id, project_id, story_id, category, title, content, created_at, updated_at
+        FROM knowledge_entries
+        WHERE deleted_at IS NULL
+          AND org_id = $1
+          AND (
+              (project_id IS NULL AND story_id IS NULL)
+              OR (project_id = $2 AND story_id IS NULL)
+          )
+        ORDER BY created_at
+        "#,
+    )
+    .bind(org_id)
+    .bind(project_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(to_knowledge_entries(rows))
+}
+
+fn to_knowledge_entries(rows: Vec<crate::knowledge::repo::KnowledgeRow>) -> Vec<KnowledgeEntry> {
+    rows.into_iter()
+        .map(|r| KnowledgeEntry {
+            title: r.title,
+            content: r.content,
+            category: parse_knowledge_category(&r.category),
+        })
+        .collect()
+}
+
+fn parse_knowledge_category(s: &str) -> shared::enums::KnowledgeCategory {
+    use shared::enums::KnowledgeCategory;
+    match s {
+        "convention" => KnowledgeCategory::Convention,
+        "adr" => KnowledgeCategory::Adr,
+        "api_doc" => KnowledgeCategory::ApiDoc,
+        "design_system" => KnowledgeCategory::DesignSystem,
+        _ => KnowledgeCategory::Custom,
+    }
+}
+
+/// Extract `QaDecision`s from persisted rounds.
+fn extract_decisions(rounds: &[crate::qa::repo::QaRoundRow]) -> Result<Vec<QaDecision>, ApiError> {
+    let mut decisions = Vec::new();
+    for round in rounds {
+        let content: QaContent = serde_json::from_value(round.content.clone())
+            .map_err(|e| ApiError::Internal(anyhow::anyhow!("bad QA content: {e}")))?;
+        for q in content.questions {
+            if let (Some(text), Some(domain)) = (q.selected_answer_text, Some(q.domain)) {
+                decisions.push(QaDecision {
+                    question_text: q.text,
+                    answer_text: text,
+                    domain,
+                });
+            }
+        }
+    }
+    Ok(decisions)
+}
+
+/// Convert LLM output questions (no id) into stored `QaQuestion` records.
+fn output_to_qa_questions(questions: Vec<QaQuestionOutput>) -> Vec<QaQuestion> {
+    questions
+        .into_iter()
+        .map(|q| QaQuestion {
+            id: new_id(),
+            text: q.text,
+            domain: q.domain,
+            rationale: q.rationale,
+            options: q
+                .options
+                .into_iter()
+                .map(|o| crate::qa::types::QaQuestionOption {
+                    label: o.label,
+                    pros: o.pros,
+                    cons: o.cons,
+                })
+                .collect(),
+            recommended_option_index: q.recommended_option_index,
+            selected_answer_index: None,
+            selected_answer_text: None,
+            answered_by: None,
+            answered_at: None,
+        })
+        .collect()
+}
+
+/// Merge augmentation output from a subsequent grooming role into the accumulated question list.
+/// Each augmentation appends the role's perspective to the rationale and each option's pros/cons.
+fn apply_augmentations(questions: &mut Vec<QaQuestion>, augmentations: Vec<QaAugmentationOutput>) {
+    for aug in augmentations {
+        let Some(q) = questions.get_mut(aug.question_index) else {
+            tracing::warn!(
+                question_index = aug.question_index,
+                "augmentation references out-of-bounds question index — skipping"
+            );
+            continue;
+        };
+
+        if !aug.rationale_addition.trim().is_empty() {
+            q.rationale = format!("{}\n\n{}", q.rationale, aug.rationale_addition.trim());
+        }
+
+        for (i, opt_aug) in aug.options.into_iter().enumerate() {
+            let Some(opt) = q.options.get_mut(i) else { break };
+            if !opt_aug.pros_addition.trim().is_empty() {
+                opt.pros = format!("{}\n\n{}", opt.pros, opt_aug.pros_addition.trim());
+            }
+            if !opt_aug.cons_addition.trim().is_empty() {
+                opt.cons = format!("{}\n\n{}", opt.cons, opt_aug.cons_addition.trim());
+            }
+        }
+    }
+}
+
+/// Dispatch a single grooming role, passing the accumulated questions
+/// from all previous roles in the chain as context.
+async fn dispatch_next_grooming_role(
+    state: &AppState,
+    org_id: Uuid,
+    project_id: Uuid,
+    story_id: Uuid,
+    qa_round_id: Uuid,
+    role: &'static prompts::grooming::GroomingRole,
+    accumulated_questions: &[QaQuestion],
+) {
+    tracing::info!(%story_id, role = role.id, "dispatching sequential grooming role");
+
+    let description = fetch_story_description(&state.pool, org_id, story_id)
+        .await
+        .unwrap_or_default();
+
+    let knowledge = fetch_knowledge(&state.pool, org_id, project_id)
+        .await
+        .unwrap_or_default();
+
+    let decisions = fetch_stage_decisions(&state.pool, org_id, story_id, "grooming")
+        .await
+        .unwrap_or_default();
+
+    let acc: Vec<prompts::grooming::AccumulatedQuestion<'_>> = accumulated_questions
+        .iter()
+        .enumerate()
+        .map(|(i, q)| prompts::grooming::AccumulatedQuestion {
+            index: i,
+            text: &q.text,
+            domain: &q.domain,
+            rationale: &q.rationale,
+            options: q.options.iter().map(|o| (o.label.as_str(), o.pros.as_str(), o.cons.as_str())).collect(),
+        })
+        .collect();
+
+    let (system_prompt, prompt) =
+        prompts::grooming::build_sequential_grooming_prompt(role, &description, &knowledge, "", &decisions, &acc);
+
+    match session_repo::create_session(
+        &state.pool,
+        org_id,
+        project_id,
+        Some(story_id),
+        None,
+        "grooming",
+        Some(role.id),
+        Some(qa_round_id),
+    )
+    .await
+    {
+        Ok(session_id) => {
+            send_execute(state, project_id, session_id, &system_prompt, &prompt).await;
+        }
+        Err(e) => tracing::error!(%story_id, role = role.id, %e, "failed to create sequential grooming session"),
+    }
+}
+
+#[cfg(test)]
+fn into_qa_questions(questions: Vec<shared::types::Question>) -> Vec<QaQuestion> {
+    questions
+        .into_iter()
+        .map(|q| QaQuestion {
+            id: q.id,
+            text: q.text,
+            domain: q.domain,
+            rationale: q.rationale,
+            options: q
+                .options
+                .into_iter()
+                .map(|o| crate::qa::types::QaQuestionOption {
+                    label: o.label,
+                    pros: o.pros,
+                    cons: o.cons,
+                })
+                .collect(),
+            recommended_option_index: q.recommended_option_index,
+            selected_answer_index: None,
+            selected_answer_text: None,
+            answered_by: None,
+            answered_at: None,
+        })
+        .collect()
+}
+
+/// Fetch the story description directly (pool-level, no RLS).
 async fn fetch_story_description(
     pool: &sqlx::PgPool,
     org_id: Uuid,
@@ -843,23 +1212,172 @@ async fn fetch_story_description(
     Ok(row.0)
 }
 
-/// Build `QaDecision`s from all *answered* rounds in the same story+stage scope,
-/// used as recovery context in `send_answer_received`.
-async fn build_prior_decisions(
+/// Fetch all decisions for a specific stage of a story.
+async fn fetch_stage_decisions(
     pool: &sqlx::PgPool,
     org_id: Uuid,
     story_id: Uuid,
     stage: &str,
-) -> Result<Vec<shared::types::QaDecision>, ApiError> {
-    let mut tx = pool.begin().await?;
-    sqlx::query("SELECT set_config('app.org_id', $1, true)")
-        .bind(org_id.to_string())
-        .execute(&mut *tx)
-        .await?;
+) -> Result<Vec<QaDecision>, ApiError> {
+    let mut tx = OrgTx::begin(pool, org_id).await?;
     let rounds = qa_repo::list_rounds(&mut tx, org_id, Some(story_id), None, Some(stage)).await?;
     let decisions = extract_decisions(&rounds)?;
     tx.commit().await?;
     Ok(decisions)
+}
+
+/// Fetch all story-level decisions (grooming + planning combined).
+async fn fetch_all_story_decisions(
+    pool: &sqlx::PgPool,
+    org_id: Uuid,
+    story_id: Uuid,
+) -> Result<Vec<QaDecision>, ApiError> {
+    let mut grooming = fetch_stage_decisions(pool, org_id, story_id, "grooming").await?;
+    let planning = fetch_stage_decisions(pool, org_id, story_id, "planning").await?;
+    grooming.extend(planning);
+    Ok(grooming)
+}
+
+/// Fetch task description directly (pool-level, no RLS).
+async fn fetch_task_description(
+    pool: &sqlx::PgPool,
+    org_id: Uuid,
+    task_id: Uuid,
+) -> Result<String, ApiError> {
+    let row: (String,) = sqlx::query_as(
+        "SELECT COALESCE(description, name) FROM tasks WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL",
+    )
+    .bind(task_id)
+    .bind(org_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(row.0)
+}
+
+/// Pre-create an empty shared grooming round that all parallel roles will
+/// append their questions into.  Returns the new round's `id`.
+async fn create_shared_grooming_round(
+    pool: &sqlx::PgPool,
+    org_id: Uuid,
+    story_id: Uuid,
+) -> Result<Uuid, ApiError> {
+    let mut tx = OrgTx::begin(pool, org_id).await?;
+
+    let max_round = qa_repo::get_max_round_number(&mut tx, story_id, None, "grooming")
+        .await?
+        .unwrap_or(0);
+
+    let empty_content = serde_json::json!({ "questions": [], "course_correction": null });
+    let row = qa_repo::create_round(
+        &mut tx,
+        org_id,
+        story_id,
+        None,
+        "grooming",
+        max_round + 1,
+        &empty_content,
+    )
+    .await?;
+
+    tx.commit().await?;
+    Ok(row.id)
+}
+
+// ── JSON normalisation ────────────────────────────────────────────────────────
+
+/// Strip markdown code fences that Claude sometimes wraps JSON output in.
+fn strip_markdown_fences(s: &str) -> &str {
+    let s = s.trim();
+    let s = if let Some(rest) = s.strip_prefix("```json") {
+        rest
+    } else if let Some(rest) = s.strip_prefix("```") {
+        rest
+    } else {
+        return s;
+    };
+    s.strip_suffix("```").unwrap_or(s).trim()
+}
+
+/// Normalise a `serde_json::Value` coming from Claude.
+///
+/// Claude sometimes wraps its JSON output in a markdown code fence, which
+/// causes the `result` field of the `--output-format json` envelope to be a
+/// plain string rather than a parsed object.  This helper unwraps that string
+/// so callers can always use `serde_json::from_value`.
+fn normalize_json_output(output: serde_json::Value) -> Result<serde_json::Value, anyhow::Error> {
+    if output.is_object() || output.is_array() {
+        return Ok(output);
+    }
+    if let Some(s) = output.as_str() {
+        let clean = strip_markdown_fences(s);
+        let parsed: serde_json::Value = serde_json::from_str(clean)
+            .map_err(|e| anyhow::anyhow!("failed to parse inner JSON from string output: {e}"))?;
+        return Ok(parsed);
+    }
+    Ok(output)
+}
+
+// ── JSON parse types for agent output ─────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+struct QaRoundOutput {
+    questions: Vec<QaQuestionOutput>,
+}
+
+/// Output format for roles 1-N in the sequential grooming chain.
+#[derive(serde::Deserialize)]
+struct SequentialQaRoundOutput {
+    #[serde(default)]
+    augmentations: Vec<QaAugmentationOutput>,
+    #[serde(default)]
+    questions: Vec<QaQuestionOutput>,
+}
+
+#[derive(serde::Deserialize)]
+struct QaAugmentationOutput {
+    question_index: usize,
+    #[serde(default)]
+    rationale_addition: String,
+    options: Vec<QaOptionAugmentationOutput>,
+}
+
+#[derive(serde::Deserialize)]
+struct QaOptionAugmentationOutput {
+    #[serde(default)]
+    pros_addition: String,
+    #[serde(default)]
+    cons_addition: String,
+}
+
+#[derive(serde::Deserialize)]
+struct QaQuestionOutput {
+    text: String,
+    domain: String,
+    rationale: String,
+    options: Vec<QaQuestionOptionOutput>,
+    recommended_option_index: usize,
+}
+
+#[derive(serde::Deserialize)]
+struct QaQuestionOptionOutput {
+    label: String,
+    pros: String,
+    cons: String,
+}
+
+#[derive(serde::Deserialize)]
+struct DecompositionOutput {
+    tasks: Vec<DecompositionTask>,
+}
+
+#[derive(serde::Deserialize)]
+struct DecompositionTask {
+    name: String,
+    description: String,
+    task_type: String,
+    position: i32,
+    #[serde(default)]
+    depends_on: Vec<i32>,
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

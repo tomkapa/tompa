@@ -1175,30 +1175,29 @@ async fn answering_last_question_sends_answer_received_to_agent(pool: PgPool) {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
-    // Wait for the spawned task to deliver the message.
+    // After all answers, dispatch_next_round("grooming") calls
+    // dispatch_next_grooming_round which dispatches 5 Execute messages
+    // (one per grooming role). Verify at least one arrives.
     let msg = tokio::time::timeout(std::time::Duration::from_secs(5), ws_rx.recv())
         .await
-        .expect("timed out waiting for AnswerReceived")
+        .expect("timed out waiting for next grooming round Execute")
         .expect("channel closed unexpectedly");
 
     match msg {
-        ServerToContainer::AnswerReceived {
-            round_id: rid,
-            answers,
-            context,
+        ServerToContainer::Execute {
+            session_id,
+            system_prompt,
+            prompt,
         } => {
-            assert_eq!(rid, round_id);
-            assert_eq!(answers.len(), 2);
-            assert_eq!(answers[0].question_id, q1);
-            assert_eq!(answers[0].selected_answer_text, "Option A");
-            assert_eq!(answers[1].question_id, q2);
-            assert_eq!(answers[1].selected_answer_text, "Option B");
-            // Verify recovery context is populated.
-            assert_eq!(context.story_id, story_id);
-            assert_eq!(context.stage, "grooming");
-            assert_eq!(context.questions.len(), 2);
-            assert!(context.grooming_context.is_some());
+            // session_id should be a valid UUID (non-nil).
+            assert_ne!(session_id, Uuid::nil());
+            // The grooming prompt should have content.
+            assert!(
+                !system_prompt.is_empty(),
+                "system_prompt should not be empty"
+            );
+            assert!(!prompt.is_empty(), "prompt should not be empty");
         }
-        other => panic!("expected AnswerReceived, got: {other:?}"),
+        other => panic!("expected Execute, got: {other:?}"),
     }
 }

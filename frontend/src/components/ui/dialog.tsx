@@ -105,33 +105,35 @@ function DialogContent({ className, position = 'center', children, onClose, ...p
       : 'fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-[24px]'
 
   return (
-    <>
-      <DialogOverlay />
-      <div
-        role="dialog"
-        aria-modal
-        data-state={dataState}
-        className={cn(
-          'bg-card border border-border shadow-xl p-10',
-          'animate-in fade-in-0 zoom-in-95',
-          'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
-          positionClass,
-          className
-        )}
-        onClick={(e) => e.stopPropagation()}
-        {...props}
-      >
-        {children}
-        <button
-          type="button"
-          className="absolute right-6 top-6 rounded-full p-1 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={handleClose}
-          aria-label="Close"
+    <DialogPortal>
+      <>
+        <DialogOverlay />
+        <div
+          role="dialog"
+          aria-modal
+          data-state={dataState}
+          className={cn(
+            'bg-card border border-border shadow-xl p-10',
+            'animate-in fade-in-0 zoom-in-95',
+            'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95',
+            positionClass,
+            className
+          )}
+          onClick={(e) => e.stopPropagation()}
+          {...props}
         >
-          <X className="h-5 w-5" />
-        </button>
-      </div>
-    </>
+          {children}
+          <button
+            type="button"
+            className="absolute right-6 top-6 rounded-full p-1 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={handleClose}
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+      </>
+    </DialogPortal>
   )
 }
 
