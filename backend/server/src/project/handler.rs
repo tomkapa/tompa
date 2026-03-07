@@ -10,7 +10,10 @@ use crate::{auth::middleware::require_auth, db::OrgTx, errors::ApiError, state::
 
 use super::{
     service,
-    types::{CreateProjectRequest, ListProjectsParams, ProjectResponse, UpdateProjectRequest},
+    types::{
+        CreateProjectRequest, ListProjectsParams, ProjectResponse, UpdateProjectRequest,
+        UpdateQaConfigRequest,
+    },
 };
 
 pub fn router(state: AppState) -> Router<AppState> {
@@ -21,6 +24,10 @@ pub fn router(state: AppState) -> Router<AppState> {
             get(get_project)
                 .patch(update_project)
                 .delete(delete_project),
+        )
+        .route(
+            "/api/v1/projects/{id}/qa-config",
+            axum::routing::patch(update_qa_config),
         )
         .route_layer(axum::middleware::from_fn_with_state(state, require_auth))
 }
@@ -123,6 +130,33 @@ pub(crate) async fn update_project(
     Json(req): Json<UpdateProjectRequest>,
 ) -> Result<Json<ProjectResponse>, ApiError> {
     let project = service::update_project(&mut tx, id, req).await?;
+    tx.commit().await?;
+    Ok(Json(project))
+}
+
+/// PATCH /api/v1/projects/:id/qa-config
+#[utoipa::path(
+    patch,
+    path = "/api/v1/projects/{id}/qa-config",
+    tag = "projects",
+    params(
+        ("id" = Uuid, Path, description = "Project ID"),
+    ),
+    request_body = UpdateQaConfigRequest,
+    responses(
+        (status = 200, description = "Updated project with new qa_config", body = ProjectResponse),
+        (status = 400, description = "Validation error"),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Project not found"),
+    ),
+    security(("cookieAuth" = []))
+)]
+pub(crate) async fn update_qa_config(
+    mut tx: OrgTx,
+    Path(id): Path<Uuid>,
+    Json(req): Json<UpdateQaConfigRequest>,
+) -> Result<Json<ProjectResponse>, ApiError> {
+    let project = service::update_qa_config(&mut tx, id, req).await?;
     tx.commit().await?;
     Ok(Json(project))
 }

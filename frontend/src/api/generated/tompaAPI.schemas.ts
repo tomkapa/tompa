@@ -150,11 +150,17 @@ export interface ProjectResponse {
   description?: string | null;
   /** @nullable */
   github_repo_url?: string | null;
-  grooming_roles: string[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  qa_config: Record<string, any>;
   id: string;
   name: string;
   org_id: string;
   updated_at: string;
+}
+
+export interface UpdateQaConfigRequest {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  qa_config: Record<string, any>;
 }
 
 export interface QaQuestionOption {
@@ -168,6 +174,8 @@ export interface QaQuestion {
   answered_at?: string | null;
   /** @nullable */
   answered_by?: string | null;
+  /** @nullable */
+  assigned_to?: string | null;
   domain: string;
   id: string;
   options: QaQuestionOption[];
@@ -179,6 +187,18 @@ export interface QaQuestion {
   /** @nullable */
   selected_answer_text?: string | null;
   text: string;
+}
+
+export interface AssignQuestionRequest {
+  member_id: string;
+}
+
+export interface OrgMemberResponse {
+  /** @nullable */
+  avatar_url?: string | null;
+  display_name: string;
+  role: string;
+  user_id: string;
 }
 
 export interface QaContent {
@@ -288,8 +308,6 @@ export interface UpdateProjectRequest {
   description?: string | null;
   /** @nullable */
   github_repo_url?: string | null;
-  /** @nullable */
-  grooming_roles?: string[] | null;
   /** @nullable */
   name?: string | null;
 }

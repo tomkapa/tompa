@@ -18,9 +18,22 @@ pub struct CreateOrgRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct UpdateOrgRequest {
+    pub name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct OrgResponse {
     pub id: Uuid,
     pub name: String,
     pub role: String,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct OrgMemberResponse {
+    pub user_id: Uuid,
+    pub display_name: String,
+    pub avatar_url: Option<String>,
+    pub role: String,
 }

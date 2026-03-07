@@ -20,6 +20,8 @@ pub enum QaError {
     QuestionNotFound,
     #[error("story_id or task_id query parameter is required")]
     MissingFilter,
+    #[error("Member is not part of this organization")]
+    InvalidAssignee,
 }
 
 // ── JSONB content structures ──────────────────────────────────────────────────
@@ -43,6 +45,7 @@ pub struct QaQuestion {
     pub selected_answer_text: Option<String>,
     pub answered_by: Option<Uuid>,
     pub answered_at: Option<DateTime<Utc>>,
+    pub assigned_to: Option<Uuid>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToSchema)]
@@ -52,6 +55,11 @@ pub struct QaContent {
 }
 
 // ── Request types ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct AssignQuestionRequest {
+    pub member_id: Uuid,
+}
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SubmitAnswerRequest {

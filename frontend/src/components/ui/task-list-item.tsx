@@ -2,6 +2,7 @@ import { cn } from '@/lib/utils'
 import { TaskTypeIcon, type TaskType } from './task-type-icon'
 import { AttentionDot } from '@/components/ui/attention-dot'
 import { StatusBadge } from '@/components/ui/status-badge'
+import { Button } from '@/components/ui/button'
 
 export interface TaskListItemData {
   id: string
@@ -30,12 +31,12 @@ export function TaskListItem({ task, onClick }: TaskListItemProps) {
   const isRunning = taskStatus === 'running'
 
   return (
-    <button
+    <Button
+      variant="ghost"
       onClick={onClick}
       className={cn(
-        'flex w-full items-center gap-3 rounded-lg border border-border px-3',
-        'h-11 text-left transition-colors hover:bg-accent/50',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+        'w-full justify-start rounded-lg border border-border px-3',
+        'h-11 hover:bg-accent/50',
       )}
     >
       <TaskTypeIcon type={task.taskType} />
@@ -46,6 +47,6 @@ export function TaskListItem({ task, onClick }: TaskListItemProps) {
         value={taskStatus}
         className={cn(isRunning && 'animate-pulse')}
       />
-    </button>
+    </Button>
   )
 }

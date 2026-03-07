@@ -1,4 +1,5 @@
 import { Layers, Github, Chrome, Brain, GitBranch, MessageCircle } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 
 const FEATURES = [
   { icon: Brain, text: 'AI-driven story decomposition' },
@@ -80,32 +81,35 @@ export function LoginPage() {
           {/* Card Content — OAuth Buttons */}
           <div className="flex flex-col gap-4 px-8 py-6 pb-8">
             <div className="flex flex-col gap-3">
-              <button
+              <Button
                 type="button"
+                variant="outline"
                 onClick={() => handleOAuthLogin('github')}
-                className="flex w-full items-center justify-center gap-2 rounded-full border border-border px-4 py-3.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+                className="w-full justify-center py-3.5 h-auto"
+                leadingIcon={<Github className="h-4 w-4" />}
               >
-                <Github className="h-4 w-4" />
                 GitHub
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="outline"
                 onClick={() => handleOAuthLogin('google')}
-                className="flex w-full items-center justify-center gap-2 rounded-full border border-border px-4 py-3.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+                className="w-full justify-center py-3.5 h-auto"
+                leadingIcon={<Chrome className="h-4 w-4" />}
               >
-                <Chrome className="h-4 w-4" />
                 Google
-              </button>
+              </Button>
             </div>
 
             {import.meta.env.DEV && (
-              <button
+              <Button
                 type="button"
+                variant="outline"
                 onClick={handleDevLogin}
-                className="flex w-full items-center justify-center gap-2 rounded-full border-2 border-dashed border-muted-foreground/30 px-4 py-3.5 text-sm font-medium text-muted-foreground transition-colors hover:border-muted-foreground/50 hover:text-foreground"
+                className="w-full justify-center py-3.5 h-auto border-2 border-dashed border-muted-foreground/30 bg-transparent text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground"
               >
                 Dev Login
-              </button>
+              </Button>
             )}
           </div>
         </div>

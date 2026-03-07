@@ -12,6 +12,23 @@ use super::{
     },
 };
 
+// ── Assignment result types ───────────────────────────────────────────────────
+
+pub struct QuestionAssignedPayload {
+    pub story_id: Uuid,
+    pub task_id: Option<Uuid>,
+    pub round_id: Uuid,
+    pub question_id: Uuid,
+    pub assigned_to: Uuid,
+    pub assigned_by: Uuid,
+    pub question_text_preview: String,
+}
+
+pub struct AssignQuestionResult {
+    pub response: QaRoundResponse,
+    pub sse: QuestionAssignedPayload,
+}
+
 // ── Submit-answer result types ──────────────────────────────────────────────
 
 /// Payload returned when all questions in a round have been answered.
@@ -182,6 +199,99 @@ pub async fn rollback(tx: &mut OrgTx, round_id: Uuid) -> Result<QaRoundResponse,
         q.answered_by = None;
         q.answered_at = None;
     }
+
+    let new_content = serde_json::to_value(&content)
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!("Failed to serialize QA content: {e}")))?;
+
+    let updated = repo::update_round_content(tx, round_id, org_id, &new_content)
+        .await?
+        .ok_or(QaError::NotFound)?;
+
+    to_response(updated)
+}
+
+pub async fn assign_question(
+    tx: &mut OrgTx,
+    round_id: Uuid,
+    question_id: Uuid,
+    member_id: Uuid,
+    assigned_by: Uuid,
+) -> Result<AssignQuestionResult, ApiError> {
+    let org_id = tx.org_id;
+
+    let row = repo::get_round(tx, round_id, org_id)
+        .await?
+        .ok_or(QaError::NotFound)?;
+
+    if row.status != "active" {
+        return Err(QaError::RoundNotActive.into());
+    }
+
+    if !repo::is_org_member(tx, org_id, member_id).await? {
+        return Err(QaError::InvalidAssignee.into());
+    }
+
+    let story_id = row.story_id;
+    let task_id = row.task_id;
+
+    let mut content: QaContent = serde_json::from_value(row.content)
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!("Failed to parse QA content: {e}")))?;
+
+    let question = content
+        .questions
+        .iter_mut()
+        .find(|q| q.id == question_id)
+        .ok_or(QaError::QuestionNotFound)?;
+
+    let preview: String = question.text.chars().take(100).collect();
+    question.assigned_to = Some(member_id);
+
+    let new_content = serde_json::to_value(&content)
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!("Failed to serialize QA content: {e}")))?;
+
+    let updated = repo::update_round_content(tx, round_id, org_id, &new_content)
+        .await?
+        .ok_or(QaError::NotFound)?;
+
+    Ok(AssignQuestionResult {
+        response: to_response(updated)?,
+        sse: QuestionAssignedPayload {
+            story_id,
+            task_id,
+            round_id,
+            question_id,
+            assigned_to: member_id,
+            assigned_by,
+            question_text_preview: preview,
+        },
+    })
+}
+
+pub async fn unassign_question(
+    tx: &mut OrgTx,
+    round_id: Uuid,
+    question_id: Uuid,
+) -> Result<QaRoundResponse, ApiError> {
+    let org_id = tx.org_id;
+
+    let row = repo::get_round(tx, round_id, org_id)
+        .await?
+        .ok_or(QaError::NotFound)?;
+
+    if row.status != "active" {
+        return Err(QaError::RoundNotActive.into());
+    }
+
+    let mut content: QaContent = serde_json::from_value(row.content)
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!("Failed to parse QA content: {e}")))?;
+
+    let question = content
+        .questions
+        .iter_mut()
+        .find(|q| q.id == question_id)
+        .ok_or(QaError::QuestionNotFound)?;
+
+    question.assigned_to = None;
 
     let new_content = serde_json::to_value(&content)
         .map_err(|e| ApiError::Internal(anyhow::anyhow!("Failed to serialize QA content: {e}")))?;

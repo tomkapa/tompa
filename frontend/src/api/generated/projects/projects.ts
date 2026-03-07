@@ -27,7 +27,8 @@ import type {
   CreateProjectRequest,
   ListProjectsParams,
   ProjectResponse,
-  UpdateProjectRequest
+  UpdateProjectRequest,
+  UpdateQaConfigRequest
 } from '../tompaAPI.schemas';
 
 
@@ -602,4 +603,70 @@ export const useUpdateProject = <TError = void,
       > => {
       return useMutation(getUpdateProjectMutationOptions(options), queryClient);
     }
-    
+
+/**
+ * @summary PATCH /api/v1/projects/:id/qa-config
+ */
+export type updateQaConfigResponse200 = { data: ProjectResponse; status: 200 }
+export type updateQaConfigResponse400 = { data: void; status: 400 }
+export type updateQaConfigResponse401 = { data: void; status: 401 }
+export type updateQaConfigResponse404 = { data: void; status: 404 }
+export type updateQaConfigResponseSuccess = updateQaConfigResponse200 & { headers: Headers }
+export type updateQaConfigResponseError = (updateQaConfigResponse400 | updateQaConfigResponse401 | updateQaConfigResponse404) & { headers: Headers }
+export type updateQaConfigResponse = updateQaConfigResponseSuccess | updateQaConfigResponseError
+
+export const getUpdateQaConfigUrl = (id: string) => `/api/v1/projects/${id}/qa-config`
+
+export const updateQaConfig = async (
+  id: string,
+  updateQaConfigRequest: UpdateQaConfigRequest,
+  options?: RequestInit,
+): Promise<updateQaConfigResponse> => {
+  const res = await fetch(getUpdateQaConfigUrl(id), {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateQaConfigRequest),
+  })
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text()
+  const data: updateQaConfigResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as updateQaConfigResponse
+}
+
+export const getUpdateQaConfigMutationOptions = <TError = void, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<Awaited<ReturnType<typeof updateQaConfig>>, TError, { id: string; data: UpdateQaConfigRequest }, TContext>
+    fetch?: RequestInit
+  },
+): UseMutationOptions<Awaited<ReturnType<typeof updateQaConfig>>, TError, { id: string; data: UpdateQaConfigRequest }, TContext> => {
+  const mutationKey = ['updateQaConfig']
+  const { mutation: mutationOptions, fetch: fetchOptions } = options
+    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, fetch: undefined }
+
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateQaConfig>>, { id: string; data: UpdateQaConfigRequest }> = (props) => {
+    const { id, data } = props ?? {}
+    return updateQaConfig(id, data, fetchOptions)
+  }
+
+  return { mutationFn, ...mutationOptions }
+}
+
+export type UpdateQaConfigMutationResult = NonNullable<Awaited<ReturnType<typeof updateQaConfig>>>
+export type UpdateQaConfigMutationBody = UpdateQaConfigRequest
+export type UpdateQaConfigMutationError = void
+
+/**
+ * @summary PATCH /api/v1/projects/:id/qa-config
+ */
+export const useUpdateQaConfig = <TError = void, TContext = unknown>(
+  options?: {
+    mutation?: UseMutationOptions<Awaited<ReturnType<typeof updateQaConfig>>, TError, { id: string; data: UpdateQaConfigRequest }, TContext>
+    fetch?: RequestInit
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<Awaited<ReturnType<typeof updateQaConfig>>, TError, { id: string; data: UpdateQaConfigRequest }, TContext> => {
+  return useMutation(getUpdateQaConfigMutationOptions(options), queryClient)
+}

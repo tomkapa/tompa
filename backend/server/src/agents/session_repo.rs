@@ -22,6 +22,7 @@ pub struct AgentSession {
 }
 
 /// Creates a new agent session and returns the generated `session_id` (UUIDv7).
+#[allow(clippy::too_many_arguments)]
 pub async fn create_session(
     pool: &PgPool,
     org_id: Uuid,
@@ -71,16 +72,11 @@ pub async fn load_session(
 }
 
 /// Mark a session as having delivered its output (set `responded_at = now()`).
-pub async fn mark_session_responded(
-    pool: &PgPool,
-    session_id: Uuid,
-) -> Result<(), sqlx::Error> {
-    sqlx::query(
-        "UPDATE agent_sessions SET responded_at = now() WHERE session_id = $1",
-    )
-    .bind(session_id)
-    .execute(pool)
-    .await?;
+pub async fn mark_session_responded(pool: &PgPool, session_id: Uuid) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE agent_sessions SET responded_at = now() WHERE session_id = $1")
+        .bind(session_id)
+        .execute(pool)
+        .await?;
     Ok(())
 }
 

@@ -1,6 +1,8 @@
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { DecisionTrailEntry } from '@/components/ui/decision-trail-entry'
+import { useListOrgMembers } from '@/features/qa/use-org-members'
+import type { OrgMember } from '@/features/qa/types'
 
 type DecisionStage =
   | 'grooming'
@@ -19,6 +21,7 @@ interface Decision {
   superseded: boolean
   stage: DecisionStage
   entryUrl?: string
+  answeredBy?: string
 }
 
 interface DecisionTrailProps {
@@ -49,6 +52,7 @@ const TASK_STAGE_ORDER: DecisionStage[] = ['task-qa', 'impl']
 
 function DecisionTrail({ decisions, level, className }: DecisionTrailProps) {
   const stageOrder = level === 'story' ? STORY_STAGE_ORDER : TASK_STAGE_ORDER
+  const { data: members = [] } = useListOrgMembers()
 
   const grouped = stageOrder.reduce<Record<string, Decision[]>>((acc, stage) => {
     const entries = decisions.filter((d) => d.stage === stage)
@@ -94,16 +98,25 @@ function DecisionTrail({ decisions, level, className }: DecisionTrailProps) {
 
             {/* Stage entries */}
             <div className="flex flex-col gap-2 pl-6">
-              {entries.map((decision) => (
-                <DecisionTrailEntry
-                  key={decision.id}
-                  domain={decision.domain}
-                  questionText={decision.questionText}
-                  answerText={decision.answerText}
-                  superseded={decision.superseded}
-                  entryUrl={decision.entryUrl}
-                />
-              ))}
+              {entries.map((decision) => {
+                const member = decision.answeredBy
+                  ? (members as OrgMember[]).find((m) => m.user_id === decision.answeredBy)
+                  : undefined
+                const answerer = member
+                  ? { displayName: member.display_name, avatarUrl: member.avatar_url }
+                  : undefined
+                return (
+                  <DecisionTrailEntry
+                    key={decision.id}
+                    domain={decision.domain}
+                    questionText={decision.questionText}
+                    answerText={decision.answerText}
+                    superseded={decision.superseded}
+                    entryUrl={decision.entryUrl}
+                    answerer={answerer}
+                  />
+                )
+              })}
             </div>
           </div>
         ))}

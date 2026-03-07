@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { X, Loader2 } from 'lucide-react'
+import { IconButton } from '@/components/ui/icon-button'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
@@ -13,7 +14,7 @@ import { QaThread } from '@/features/qa/qa-thread'
 import { DecisionTrail } from '@/features/decisions/decision-trail'
 import type { Decision, DecisionStage } from '@/features/decisions/decision-trail'
 import type { QaRound } from '@/features/qa/types'
-import { useGetStory } from '@/api/generated/stories/stories'
+import { useGetStory, useApproveDescription, useUpdateStory, getGetStoryQueryKey } from '@/api/generated/stories/stories'
 import { useGetTask, useMarkDone, getGetTaskQueryKey } from '@/api/generated/tasks/tasks'
 import {
   useListRounds,
@@ -28,6 +29,8 @@ import type {
   StoryResponse,
 } from '@/api/generated/tompaAPI.schemas'
 import { useToastStore } from '@/stores/toast-store'
+import { useAuth } from '@/hooks/use-auth'
+import { putAssignee } from '@/features/qa/use-question-assignment'
 
 // ── Data mapping ─────────────────────────────────────────────────────────────
 
@@ -65,6 +68,7 @@ function mapApiRound(r: QaRoundResponse): QaRound {
         recommendedIndex: (raw.recommended_option_index as number) ?? 0,
         answeredIndex: q.selected_answer_index ?? undefined,
         answeredText: q.selected_answer_text ?? undefined,
+        assignedTo: (raw.assigned_to as string | null | undefined) ?? undefined,
       }
     }),
   }
@@ -87,6 +91,7 @@ function roundsToDecisions(rounds: QaRoundResponse[]): Decision[] {
           answerText,
           superseded: false,
           stage: toDecisionStage(round.stage),
+          answeredBy: (q as unknown as Record<string, unknown>).answered_by as string | undefined,
         })
       }
     }
@@ -134,7 +139,7 @@ function ModalShell({ breadcrumb, onCloseAttempt, children, className, dataState
         className={cn(
           'flex flex-col overflow-hidden bg-card',
           'h-full w-full',
-          'md:h-[min(720px,90vh)] md:w-[min(1152px,92vw)] md:rounded-2xl md:shadow-[0_16px_48px_rgba(0,0,0,0.2)]',
+          'md:h-[90vh] md:w-[90vw] md:rounded-2xl md:shadow-[0_16px_48px_rgba(0,0,0,0.2)]',
           'animate-in fade-in-0 zoom-in-[0.98]',
           'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-[0.98]',
           className
@@ -144,14 +149,15 @@ function ModalShell({ breadcrumb, onCloseAttempt, children, className, dataState
         {/* Header */}
         <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3 md:px-6 md:py-4">
           {breadcrumb}
-          <button
+          <IconButton
             type="button"
+            variant="ghost"
             aria-label="Close"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="h-8 w-8 text-muted-foreground"
             onClick={onCloseAttempt}
           >
             <X className="h-4 w-4" />
-          </button>
+          </IconButton>
         </div>
 
         {/* Content area */}
@@ -192,6 +198,7 @@ function RightPanel({
   rounds,
   decisions,
   level,
+  storyId,
   onAnswer,
 
   onCourseCorrect,
@@ -207,6 +214,7 @@ function RightPanel({
         {activeTab === 'qa' ? (
           <QaThread
             rounds={rounds}
+            storyId={storyId}
             onAnswer={onAnswer}
 
             onCourseCorrect={onCourseCorrect}
@@ -227,18 +235,22 @@ interface StoryViewProps {
   story: StoryResponse
   rounds: QaRoundResponse[]
   onAnswer: (questionId: string, answerIndex: number | null, answerText: string | null) => void
-
   onCourseCorrect: (text: string) => void
   onTaskClick: (taskId: string) => void
+  onApproveDescription?: () => void
+  onDescriptionSave?: (description: string) => void
+  isSavingDescription?: boolean
 }
 
 function StoryViewContent({
   story,
   rounds,
   onAnswer,
-
   onCourseCorrect,
   onTaskClick,
+  onApproveDescription,
+  onDescriptionSave,
+  isSavingDescription,
 }: Omit<StoryViewProps, 'projectId' | 'storyId'>) {
   const mappedRounds = React.useMemo(() => rounds.map(mapApiRound), [rounds])
   const decisions = React.useMemo(() => roundsToDecisions(rounds), [rounds])
@@ -259,6 +271,9 @@ function StoryViewContent({
             story={story}
             tasks={story.tasks}
             onTaskClick={onTaskClick}
+            onApproveDescription={onApproveDescription}
+            onDescriptionSave={onDescriptionSave}
+            isSavingDescription={isSavingDescription}
             className="h-full"
           />
         </div>
@@ -282,6 +297,9 @@ function StoryViewContent({
               story={story}
               tasks={story.tasks}
               onTaskClick={onTaskClick}
+              onApproveDescription={onApproveDescription}
+              onDescriptionSave={onDescriptionSave}
+              isSavingDescription={isSavingDescription}
             />
           </div>
         )}
@@ -289,8 +307,9 @@ function StoryViewContent({
           <div className="flex-1 overflow-hidden p-4">
             <QaThread
               rounds={mappedRounds}
+              storyId={story.id}
               onAnswer={onAnswer}
-  
+
               onCourseCorrect={onCourseCorrect}
             />
           </div>
@@ -397,8 +416,9 @@ function TaskViewContent({
           <div className="flex-1 overflow-hidden p-4">
             <QaThread
               rounds={mappedRounds}
+              storyId={task.story_id}
               onAnswer={onAnswer}
-  
+
               onCourseCorrect={onCourseCorrect}
             />
           </div>
@@ -435,6 +455,7 @@ export function StoryModal() {
 
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { user } = useAuth()
 
   const [modalOpen, setModalOpen] = React.useState(true)
   const { visible: modalVisible, dataState: modalDataState } = useExitAnimation(modalOpen, 150)
@@ -455,12 +476,40 @@ export function StoryModal() {
   const apiRounds: QaRoundResponse[] = roundsResp?.status === 200 ? roundsResp.data : []
 
   // ── Mutations ──────────────────────────────────────────────────────────────
-  const submitAnswerMutation = useSubmitAnswer({
+  const updateDescriptionMutation = useUpdateStory({
     mutation: {
       onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: getGetStoryQueryKey(storyId) })
+      },
+      onError: () => {
+        useToastStore.getState().addToast({ variant: 'error', title: 'Failed to save description' })
+        console.error('[StoryModal]', { storyId, stage: 'save_description' }, 'update failed')
+      },
+    },
+  })
+
+  const approveDescriptionMutation = useApproveDescription({
+    mutation: {
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: getGetStoryQueryKey(storyId) })
+      },
+      onError: () => {
+        useToastStore.getState().addToast({ variant: 'error', title: 'Failed to approve description' })
+      },
+    },
+  })
+
+  const submitAnswerMutation = useSubmitAnswer({
+    mutation: {
+      onSuccess: (_, variables) => {
         void queryClient.invalidateQueries({
           queryKey: getListRoundsQueryKey(roundsParams),
         })
+        if (user) {
+          putAssignee(variables.id, variables.data.question_id, user.user_id).catch((err) => {
+            console.warn('[StoryModal] auto-assign after answer failed', { roundId: variables.id, questionId: variables.data.question_id }, err)
+          })
+        }
       },
       onError: () => {
         useToastStore.getState().addToast({ variant: 'error', title: 'Failed to submit answer' })
@@ -592,9 +641,14 @@ export function StoryModal() {
             story={story}
             rounds={apiRounds}
             onAnswer={handleAnswer}
-
             onCourseCorrect={handleCourseCorrect}
             onTaskClick={handleTaskClick}
+            onApproveDescription={() => approveDescriptionMutation.mutate({ id: storyId, data: {} })}
+            onDescriptionSave={(description) => {
+              console.info('[StoryModal]', { storyId, stage: 'save_description' })
+              updateDescriptionMutation.mutate({ id: storyId, data: { description } })
+            }}
+            isSavingDescription={updateDescriptionMutation.isPending}
           />
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">

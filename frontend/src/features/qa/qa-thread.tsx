@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { cn } from '@/lib/utils'
+import { Select } from '@/components/ui/select'
 import { NewQuestionIndicator } from '@/components/ui/new-question-indicator'
 import { CourseCorrectionInput } from '@/components/ui/course-correction-input'
 import { QuestionBlock } from './question-block'
@@ -7,6 +8,7 @@ import type { QaRound, QaQuestion } from './types'
 
 interface QaThreadProps {
   rounds: QaRound[]
+  storyId: string
   stage?: string
   stages?: string[]
   onAnswer: (questionId: string, answerIndex: number | null, answerText: string | null) => void
@@ -16,6 +18,7 @@ interface QaThreadProps {
 
 function QaThread({
   rounds,
+  storyId,
   stage,
   stages,
   onAnswer,
@@ -79,17 +82,17 @@ function QaThread({
       <div className="flex items-center justify-between border-b border-border px-5 py-4">
         <h2 className="text-base font-semibold leading-[1.2] text-foreground">Questions</h2>
         {stages && stages.length > 0 && onStageChange && (
-          <select
+          <Select
             value={stage}
             onChange={(e) => onStageChange(e.target.value)}
-            className="rounded-full border border-border bg-background px-3 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            className="px-3 py-1.5 bg-background"
           >
             {stages.map((s) => (
               <option key={s} value={s}>
                 {s}
               </option>
             ))}
-          </select>
+          </Select>
         )}
       </div>
 
@@ -113,6 +116,8 @@ function QaThread({
                   <QuestionBlock
                     key={q.id}
                     question={q}
+                    roundId={round.id}
+                    storyId={storyId}
                     onAnswer={onAnswer}
                     isRollbackPoint={!!round.isRollbackPoint}
                     answered={isQuestionAnswered(q)}

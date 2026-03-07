@@ -42,7 +42,6 @@ pub async fn handle_message(state: &AppState, key_info: &ContainerKeyInfo, msg: 
     }
 }
 
-
 // ── Incoming handlers ─────────────────────────────────────────────────────────
 
 async fn on_execution_result(
@@ -105,13 +104,15 @@ async fn on_qa_result(
         // Resolve which roles are enabled for this project, then find the
         // current role's position within that filtered list.
         let role_id = session.role.as_deref().unwrap_or("");
-        let project_role_ids = fetch_project_grooming_roles(&state.pool, session.project_id).await?;
-        let enabled_roles = enabled_grooming_roles(&project_role_ids);
+        let qa_config = fetch_project_qa_config(&state.pool, session.project_id).await?;
+        let enabled_roles = parse_enabled_grooming_roles(&qa_config);
         let pos_in_enabled = enabled_roles
             .iter()
             .position(|r| r.id == role_id)
             .ok_or_else(|| {
-                ApiError::Internal(anyhow::anyhow!("grooming role '{role_id}' not in enabled list for project"))
+                ApiError::Internal(anyhow::anyhow!(
+                    "grooming role '{role_id}' not in enabled list for project"
+                ))
             })?;
 
         // Load the current accumulated questions from the shared round.
@@ -123,31 +124,42 @@ async fn on_qa_result(
             })?;
         tx.commit().await?;
 
-        let mut content: QaContent = serde_json::from_value(round.content)
-            .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to parse round content: {e}")))?;
+        let mut content: QaContent = serde_json::from_value(round.content).map_err(|e| {
+            ApiError::Internal(anyhow::anyhow!("failed to parse round content: {e}"))
+        })?;
 
         if pos_in_enabled == 0 {
             // First enabled role: simple `{"questions":[...]}` format.
-            let round_output: QaRoundOutput = serde_json::from_value(output)
-                .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to parse QA output: {e}")))?;
+            let round_output: QaRoundOutput = serde_json::from_value(output).map_err(|e| {
+                ApiError::Internal(anyhow::anyhow!("failed to parse QA output: {e}"))
+            })?;
             let new_questions = output_to_qa_questions(round_output.questions);
             content.questions.extend(new_questions);
         } else {
             // Subsequent role: `{"augmentations":[...],"questions":[...]}` format.
-            let seq_output: SequentialQaRoundOutput = serde_json::from_value(output)
-                .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to parse sequential QA output: {e}")))?;
+            let seq_output: SequentialQaRoundOutput =
+                serde_json::from_value(output).map_err(|e| {
+                    ApiError::Internal(anyhow::anyhow!("failed to parse sequential QA output: {e}"))
+                })?;
 
             apply_augmentations(&mut content.questions, seq_output.augmentations);
-            content.questions.extend(output_to_qa_questions(seq_output.questions));
+            content
+                .questions
+                .extend(output_to_qa_questions(seq_output.questions));
         }
 
         // Persist the updated content.
-        let content_json = serde_json::to_value(&content)
-            .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to serialise QA content: {e}")))?;
+        let content_json = serde_json::to_value(&content).map_err(|e| {
+            ApiError::Internal(anyhow::anyhow!("failed to serialise QA content: {e}"))
+        })?;
         let mut tx = OrgTx::begin(&state.pool, org_id).await?;
         qa_repo::update_round_content(&mut tx, qa_round_id, org_id, &content_json)
             .await?
-            .ok_or_else(|| ApiError::Internal(anyhow::anyhow!("qa_round {qa_round_id} not found during update")))?;
+            .ok_or_else(|| {
+                ApiError::Internal(anyhow::anyhow!(
+                    "qa_round {qa_round_id} not found during update"
+                ))
+            })?;
         tx.commit().await?;
 
         if let Some(&next_role) = enabled_roles.get(pos_in_enabled + 1) {
@@ -160,12 +172,20 @@ async fn on_qa_result(
                 qa_round_id,
                 next_role,
                 &content.questions,
+                &qa_config,
             )
             .await;
         } else {
             // All enabled roles done — broadcast or converge.
             if content.questions.is_empty() {
-                dispatch_description_refinement(state, org_id, session.project_id, story_id, "grooming").await;
+                dispatch_description_refinement(
+                    state,
+                    org_id,
+                    session.project_id,
+                    story_id,
+                    "grooming",
+                )
+                .await;
             } else {
                 state.broadcaster.broadcast(
                     org_id,
@@ -185,7 +205,8 @@ async fn on_qa_result(
 
         if questions.is_empty() {
             // No further questions → converge → description refinement
-            dispatch_description_refinement(state, org_id, session.project_id, story_id, stage).await;
+            dispatch_description_refinement(state, org_id, session.project_id, story_id, stage)
+                .await;
         } else {
             // Create a fresh round for this response.
             let mut tx = OrgTx::begin(&state.pool, key_info.org_id).await?;
@@ -198,7 +219,9 @@ async fn on_qa_result(
                 questions,
                 course_correction: None,
             })
-            .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to serialise QA content: {e}")))?;
+            .map_err(|e| {
+                ApiError::Internal(anyhow::anyhow!("failed to serialise QA content: {e}"))
+            })?;
 
             let row = qa_repo::create_round(
                 &mut tx,
@@ -269,8 +292,11 @@ async fn on_decomposition_result(
     let org_id = key_info.org_id;
     let story_id = session.story_id.ok_or(ApiError::NotFound)?;
 
-    let output = normalize_json_output(output)
-        .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to normalise decomposition output: {e}")))?;
+    let output = normalize_json_output(output).map_err(|e| {
+        ApiError::Internal(anyhow::anyhow!(
+            "failed to normalise decomposition output: {e}"
+        ))
+    })?;
     let decomposition: DecompositionOutput = serde_json::from_value(output)
         .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to parse decomposition: {e}")))?;
 
@@ -342,8 +368,9 @@ async fn on_task_qa_result(
     let story_id = session.story_id.ok_or(ApiError::NotFound)?;
     let task_id = session.task_id.ok_or(ApiError::NotFound)?;
 
-    let output = normalize_json_output(output)
-        .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to normalise task QA output: {e}")))?;
+    let output = normalize_json_output(output).map_err(|e| {
+        ApiError::Internal(anyhow::anyhow!("failed to normalise task QA output: {e}"))
+    })?;
     let round: QaRoundOutput = serde_json::from_value(output)
         .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to parse task QA output: {e}")))?;
 
@@ -396,6 +423,7 @@ async fn on_task_qa_result(
             selected_answer_text: None,
             answered_by: None,
             answered_at: None,
+            assigned_to: None,
         })
         .collect();
 
@@ -624,14 +652,36 @@ pub async fn dispatch_grooming(
         }
     };
 
+    let qa_config = fetch_project_qa_config(&state.pool, project_id)
+        .await
+        .unwrap_or_default();
+
     let knowledge = fetch_knowledge(&state.pool, org_id, project_id)
         .await
         .unwrap_or_default();
 
     // Only dispatch role 0 (business analyst); subsequent roles are chained in on_qa_result.
-    let role = &prompts::grooming::GROOMING_ROLES[0];
-    let (system_prompt, prompt) =
-        prompts::grooming::build_grooming_prompt(role, description, &knowledge, "", &[]);
+    let enabled_roles = parse_enabled_grooming_roles(&qa_config);
+    let role = match enabled_roles.first() {
+        Some(r) => r,
+        None => {
+            tracing::error!(%story_id, "no grooming roles enabled — grooming skipped");
+            return;
+        }
+    };
+    let (model_short, detail_level, max_questions) = grooming_role_config(&qa_config, role.id);
+    let detail_text = prompts::detail_levels::detail_level_threshold(detail_level);
+    let model = prompts::models::resolve_model_id(&model_short);
+
+    let (system_prompt, prompt) = prompts::grooming::build_grooming_prompt(
+        role,
+        description,
+        &knowledge,
+        "",
+        &[],
+        detail_text,
+        max_questions,
+    );
 
     match session_repo::create_session(
         &state.pool,
@@ -646,22 +696,40 @@ pub async fn dispatch_grooming(
     .await
     {
         Ok(session_id) => {
-            send_execute(state, project_id, session_id, &system_prompt, &prompt).await;
+            send_execute(
+                state,
+                project_id,
+                session_id,
+                &system_prompt,
+                &prompt,
+                model,
+            )
+            .await;
         }
-        Err(e) => tracing::error!(%story_id, role = role.id, %e, "failed to create grooming session"),
+        Err(e) => {
+            tracing::error!(%story_id, role = role.id, %e, "failed to create grooming session")
+        }
     }
 }
 
 /// Dispatch planning Q&A for a story.
 pub async fn dispatch_planning(state: &AppState, org_id: Uuid, project_id: Uuid, story_id: Uuid) {
     tracing::info!(%story_id, %project_id, "dispatching planning");
+
+    let qa_config = fetch_project_qa_config(&state.pool, project_id)
+        .await
+        .unwrap_or_default();
+    let (model_short, _, _) = stage_config(&qa_config, "planning");
+    let model = prompts::models::resolve_model_id(&model_short);
+
     let knowledge = fetch_knowledge(&state.pool, org_id, project_id)
         .await
         .unwrap_or_default();
 
-    let description = fetch_story_description(&state.pool, org_id, story_id)
+    let (story_title, description) = fetch_story_description(&state.pool, org_id, story_id)
         .await
         .unwrap_or_default();
+    let story_context = fmt_story_context(&story_title, &description);
 
     let grooming_decisions = fetch_stage_decisions(&state.pool, org_id, story_id, "grooming")
         .await
@@ -672,7 +740,7 @@ pub async fn dispatch_planning(state: &AppState, org_id: Uuid, project_id: Uuid,
         .unwrap_or_default();
 
     let (system_prompt, prompt) = prompts::planning::build_planning_prompt(
-        &description,
+        &story_context,
         &knowledge,
         "",
         &grooming_decisions,
@@ -692,7 +760,15 @@ pub async fn dispatch_planning(state: &AppState, org_id: Uuid, project_id: Uuid,
     .await
     {
         Ok(session_id) => {
-            send_execute(state, project_id, session_id, &system_prompt, &prompt).await;
+            send_execute(
+                state,
+                project_id,
+                session_id,
+                &system_prompt,
+                &prompt,
+                model,
+            )
+            .await;
         }
         Err(e) => tracing::error!(%story_id, %e, "failed to create planning session"),
     }
@@ -707,7 +783,7 @@ async fn dispatch_description_refinement(
     stage: &str,
 ) {
     tracing::info!(%story_id, %project_id, stage, "dispatching description refinement");
-    let description = fetch_story_description(&state.pool, org_id, story_id)
+    let (story_title, description) = fetch_story_description(&state.pool, org_id, story_id)
         .await
         .unwrap_or_default();
 
@@ -715,8 +791,15 @@ async fn dispatch_description_refinement(
         .await
         .unwrap_or_default();
 
-    let (system_prompt, prompt) =
-        prompts::description_refinement::build_refinement_prompt(&description, &decisions, stage);
+    let (system_prompt, prompt) = prompts::description_refinement::build_refinement_prompt(
+        &story_title,
+        &description,
+        &decisions,
+        stage,
+    );
+
+    // Description refinement uses a fixed default model (not in qa_config).
+    let model = prompts::models::resolve_model_id("sonnet");
 
     match session_repo::create_session(
         &state.pool,
@@ -731,7 +814,15 @@ async fn dispatch_description_refinement(
     .await
     {
         Ok(session_id) => {
-            send_execute(state, project_id, session_id, &system_prompt, &prompt).await;
+            send_execute(
+                state,
+                project_id,
+                session_id,
+                &system_prompt,
+                &prompt,
+                model,
+            )
+            .await;
         }
         Err(e) => tracing::error!(%story_id, %e, "failed to create refinement session"),
     }
@@ -745,9 +836,10 @@ pub async fn dispatch_decomposition(
     story_id: Uuid,
 ) {
     tracing::info!(%story_id, %project_id, "dispatching task decomposition");
-    let description = fetch_story_description(&state.pool, org_id, story_id)
+    let (story_title, description) = fetch_story_description(&state.pool, org_id, story_id)
         .await
         .unwrap_or_default();
+    let story_context = fmt_story_context(&story_title, &description);
 
     let grooming_decisions = fetch_stage_decisions(&state.pool, org_id, story_id, "grooming")
         .await
@@ -757,11 +849,14 @@ pub async fn dispatch_decomposition(
         .unwrap_or_default();
 
     let (system_prompt, prompt) = prompts::task_decomposition::build_decomposition_prompt(
-        &description,
+        &story_context,
         "",
         &grooming_decisions,
         &planning_decisions,
     );
+
+    // Decomposition uses a fixed default model (not in qa_config).
+    let model = prompts::models::resolve_model_id("sonnet");
 
     match session_repo::create_session(
         &state.pool,
@@ -776,7 +871,15 @@ pub async fn dispatch_decomposition(
     .await
     {
         Ok(session_id) => {
-            send_execute(state, project_id, session_id, &system_prompt, &prompt).await;
+            send_execute(
+                state,
+                project_id,
+                session_id,
+                &system_prompt,
+                &prompt,
+                model,
+            )
+            .await;
         }
         Err(e) => tracing::error!(%story_id, %e, "failed to create decomposition session"),
     }
@@ -815,6 +918,13 @@ pub async fn dispatch_implementation(
     task_id: Uuid,
 ) {
     tracing::info!(%task_id, %story_id, %project_id, "dispatching implementation");
+
+    let qa_config = fetch_project_qa_config(&state.pool, project_id)
+        .await
+        .unwrap_or_default();
+    let (model_short, _, _) = stage_config(&qa_config, "implementation");
+    let model = prompts::models::resolve_model_id(&model_short);
+
     let knowledge = fetch_knowledge(&state.pool, org_id, project_id)
         .await
         .unwrap_or_default();
@@ -847,7 +957,15 @@ pub async fn dispatch_implementation(
     .await
     {
         Ok(session_id) => {
-            send_execute(state, project_id, session_id, &system_prompt, &prompt).await;
+            send_execute(
+                state,
+                project_id,
+                session_id,
+                &system_prompt,
+                &prompt,
+                model,
+            )
+            .await;
         }
         Err(e) => tracing::error!(%task_id, %e, "failed to create implementation session"),
     }
@@ -870,9 +988,14 @@ async fn dispatch_next_grooming_round(
         }
     };
 
-    let description = fetch_story_description(&state.pool, org_id, story_id)
+    let qa_config = fetch_project_qa_config(&state.pool, project_id)
         .await
         .unwrap_or_default();
+
+    let (story_title, description) = fetch_story_description(&state.pool, org_id, story_id)
+        .await
+        .unwrap_or_default();
+    let story_context = fmt_story_context(&story_title, &description);
 
     let knowledge = fetch_knowledge(&state.pool, org_id, project_id)
         .await
@@ -882,10 +1005,28 @@ async fn dispatch_next_grooming_round(
         .await
         .unwrap_or_default();
 
-    // Only dispatch role 0; the chain continues in on_qa_result.
-    let role = &prompts::grooming::GROOMING_ROLES[0];
-    let (system_prompt, prompt) =
-        prompts::grooming::build_grooming_prompt(role, &description, &knowledge, "", &decisions);
+    // Only dispatch role 0 (BA); the chain continues in on_qa_result.
+    let enabled_roles = parse_enabled_grooming_roles(&qa_config);
+    let role = match enabled_roles.first() {
+        Some(r) => r,
+        None => {
+            tracing::error!(%story_id, "no grooming roles enabled — next grooming round skipped");
+            return;
+        }
+    };
+    let (model_short, detail_level, max_questions) = grooming_role_config(&qa_config, role.id);
+    let detail_text = prompts::detail_levels::detail_level_threshold(detail_level);
+    let model = prompts::models::resolve_model_id(&model_short);
+
+    let (system_prompt, prompt) = prompts::grooming::build_grooming_prompt(
+        role,
+        &story_context,
+        &knowledge,
+        "",
+        &decisions,
+        detail_text,
+        max_questions,
+    );
 
     match session_repo::create_session(
         &state.pool,
@@ -900,9 +1041,19 @@ async fn dispatch_next_grooming_round(
     .await
     {
         Ok(session_id) => {
-            send_execute(state, project_id, session_id, &system_prompt, &prompt).await;
+            send_execute(
+                state,
+                project_id,
+                session_id,
+                &system_prompt,
+                &prompt,
+                model,
+            )
+            .await;
         }
-        Err(e) => tracing::error!(%story_id, role = role.id, %e, "failed to create next grooming session"),
+        Err(e) => {
+            tracing::error!(%story_id, role = role.id, %e, "failed to create next grooming session")
+        }
     }
 }
 
@@ -915,16 +1066,18 @@ async fn send_execute(
     session_id: Uuid,
     system_prompt: &str,
     prompt: &str,
+    model: &str,
 ) {
     match find_connected_key(&state.pool, state.registry.as_ref(), project_id).await {
         Some(key_id) => {
-            tracing::info!(%project_id, %session_id, "sending Execute to container");
+            tracing::info!(%project_id, %session_id, %model, "sending Execute to container");
             let _ = state.registry.send_to(
                 key_id,
                 ServerToContainer::Execute {
                     session_id,
                     system_prompt: system_prompt.to_string(),
                     prompt: prompt.to_string(),
+                    model: model.to_string(),
                 },
             );
         }
@@ -963,29 +1116,59 @@ async fn find_connected_key(
     find_key_in_registry(&ids, registry)
 }
 
-/// Fetch the enabled grooming role IDs for a project (pool-level, no RLS needed).
-async fn fetch_project_grooming_roles(
+/// Fetch the qa_config JSON for a project (pool-level, no RLS needed).
+async fn fetch_project_qa_config(
     pool: &sqlx::PgPool,
     project_id: Uuid,
-) -> Result<Vec<String>, ApiError> {
-    let row: (Vec<String>,) = sqlx::query_as(
-        "SELECT grooming_roles FROM projects WHERE id = $1 AND deleted_at IS NULL",
-    )
-    .bind(project_id)
-    .fetch_one(pool)
-    .await?;
+) -> Result<serde_json::Value, ApiError> {
+    let row: (serde_json::Value,) =
+        sqlx::query_as("SELECT qa_config FROM projects WHERE id = $1 AND deleted_at IS NULL")
+            .bind(project_id)
+            .fetch_one(pool)
+            .await?;
     Ok(row.0)
 }
 
-/// Filter `GROOMING_ROLES` to only those whose IDs appear in `role_ids`,
-/// preserving the canonical order.
-fn enabled_grooming_roles(
-    role_ids: &[String],
+/// Filter `GROOMING_ROLES` to those present in `qa_config.grooming`, preserving canonical order.
+fn parse_enabled_grooming_roles(
+    qa_config: &serde_json::Value,
 ) -> Vec<&'static prompts::grooming::GroomingRole> {
+    let grooming = qa_config.get("grooming").and_then(|v| v.as_object());
+    let Some(grooming) = grooming else {
+        return vec![];
+    };
     prompts::grooming::GROOMING_ROLES
         .iter()
-        .filter(|r| role_ids.iter().any(|id| id.as_str() == r.id))
+        .filter(|role| grooming.contains_key(role.id))
         .collect()
+}
+
+/// Extract (model_short_id, detail_level, max_questions) for a grooming role from qa_config.
+fn grooming_role_config(qa_config: &serde_json::Value, role_id: &str) -> (String, i64, i64) {
+    let cfg = qa_config.get("grooming").and_then(|g| g.get(role_id));
+    extract_role_config(cfg)
+}
+
+/// Extract (model_short_id, detail_level, max_questions) for planning or implementation.
+fn stage_config(qa_config: &serde_json::Value, stage: &str) -> (String, i64, i64) {
+    extract_role_config(qa_config.get(stage))
+}
+
+fn extract_role_config(cfg: Option<&serde_json::Value>) -> (String, i64, i64) {
+    let model = cfg
+        .and_then(|c| c.get("model"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("sonnet")
+        .to_string();
+    let detail_level = cfg
+        .and_then(|c| c.get("detail_level"))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(3);
+    let max_questions = cfg
+        .and_then(|c| c.get("max_questions"))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(3);
+    (model, detail_level, max_questions)
 }
 
 /// Fetch knowledge entries (org + project level) without RLS — uses pool directly.
@@ -1078,13 +1261,14 @@ fn output_to_qa_questions(questions: Vec<QaQuestionOutput>) -> Vec<QaQuestion> {
             selected_answer_text: None,
             answered_by: None,
             answered_at: None,
+            assigned_to: None,
         })
         .collect()
 }
 
 /// Merge augmentation output from a subsequent grooming role into the accumulated question list.
 /// Each augmentation appends the role's perspective to the rationale and each option's pros/cons.
-fn apply_augmentations(questions: &mut Vec<QaQuestion>, augmentations: Vec<QaAugmentationOutput>) {
+fn apply_augmentations(questions: &mut [QaQuestion], augmentations: Vec<QaAugmentationOutput>) {
     for aug in augmentations {
         let Some(q) = questions.get_mut(aug.question_index) else {
             tracing::warn!(
@@ -1099,7 +1283,9 @@ fn apply_augmentations(questions: &mut Vec<QaQuestion>, augmentations: Vec<QaAug
         }
 
         for (i, opt_aug) in aug.options.into_iter().enumerate() {
-            let Some(opt) = q.options.get_mut(i) else { break };
+            let Some(opt) = q.options.get_mut(i) else {
+                break;
+            };
             if !opt_aug.pros_addition.trim().is_empty() {
                 opt.pros = format!("{}\n\n{}", opt.pros, opt_aug.pros_addition.trim());
             }
@@ -1112,6 +1298,7 @@ fn apply_augmentations(questions: &mut Vec<QaQuestion>, augmentations: Vec<QaAug
 
 /// Dispatch a single grooming role, passing the accumulated questions
 /// from all previous roles in the chain as context.
+#[allow(clippy::too_many_arguments)]
 async fn dispatch_next_grooming_role(
     state: &AppState,
     org_id: Uuid,
@@ -1120,12 +1307,18 @@ async fn dispatch_next_grooming_role(
     qa_round_id: Uuid,
     role: &'static prompts::grooming::GroomingRole,
     accumulated_questions: &[QaQuestion],
+    qa_config: &serde_json::Value,
 ) {
     tracing::info!(%story_id, role = role.id, "dispatching sequential grooming role");
 
-    let description = fetch_story_description(&state.pool, org_id, story_id)
+    let (model_short, detail_level, max_questions) = grooming_role_config(qa_config, role.id);
+    let detail_text = prompts::detail_levels::detail_level_threshold(detail_level);
+    let model = prompts::models::resolve_model_id(&model_short);
+
+    let (story_title, description) = fetch_story_description(&state.pool, org_id, story_id)
         .await
         .unwrap_or_default();
+    let story_context = fmt_story_context(&story_title, &description);
 
     let knowledge = fetch_knowledge(&state.pool, org_id, project_id)
         .await
@@ -1143,12 +1336,24 @@ async fn dispatch_next_grooming_role(
             text: &q.text,
             domain: &q.domain,
             rationale: &q.rationale,
-            options: q.options.iter().map(|o| (o.label.as_str(), o.pros.as_str(), o.cons.as_str())).collect(),
+            options: q
+                .options
+                .iter()
+                .map(|o| (o.label.as_str(), o.pros.as_str(), o.cons.as_str()))
+                .collect(),
         })
         .collect();
 
-    let (system_prompt, prompt) =
-        prompts::grooming::build_sequential_grooming_prompt(role, &description, &knowledge, "", &decisions, &acc);
+    let (system_prompt, prompt) = prompts::grooming::build_sequential_grooming_prompt(
+        role,
+        &story_context,
+        &knowledge,
+        "",
+        &decisions,
+        &acc,
+        detail_text,
+        max_questions,
+    );
 
     match session_repo::create_session(
         &state.pool,
@@ -1163,9 +1368,19 @@ async fn dispatch_next_grooming_role(
     .await
     {
         Ok(session_id) => {
-            send_execute(state, project_id, session_id, &system_prompt, &prompt).await;
+            send_execute(
+                state,
+                project_id,
+                session_id,
+                &system_prompt,
+                &prompt,
+                model,
+            )
+            .await;
         }
-        Err(e) => tracing::error!(%story_id, role = role.id, %e, "failed to create sequential grooming session"),
+        Err(e) => {
+            tracing::error!(%story_id, role = role.id, %e, "failed to create sequential grooming session")
+        }
     }
 }
 
@@ -1192,24 +1407,37 @@ fn into_qa_questions(questions: Vec<shared::types::Question>) -> Vec<QaQuestion>
             selected_answer_text: None,
             answered_by: None,
             answered_at: None,
+            assigned_to: None,
         })
         .collect()
 }
 
-/// Fetch the story description directly (pool-level, no RLS).
+/// Fetch the story title and description directly (pool-level, no RLS).
+/// Returns `(title, description)`.
 async fn fetch_story_description(
     pool: &sqlx::PgPool,
     org_id: Uuid,
     story_id: Uuid,
-) -> Result<String, ApiError> {
-    let row: (String,) = sqlx::query_as(
-        "SELECT description FROM stories WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL",
+) -> Result<(String, String), ApiError> {
+    let row: (String, String) = sqlx::query_as(
+        "SELECT title, description FROM stories WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL",
     )
     .bind(story_id)
     .bind(org_id)
     .fetch_one(pool)
     .await?;
-    Ok(row.0)
+    Ok((row.0, row.1))
+}
+
+/// Build a combined story context string for use in prompts.
+/// Always includes the title; appends description if non-empty.
+fn fmt_story_context(title: &str, description: &str) -> String {
+    let description = description.trim();
+    if description.is_empty() {
+        title.to_owned()
+    } else {
+        format!("{title}\n\n{description}")
+    }
 }
 
 /// Fetch all decisions for a specific stage of a story.

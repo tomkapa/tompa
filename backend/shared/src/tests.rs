@@ -130,6 +130,7 @@ fn server_to_container_execute() {
         session_id: Uuid::now_v7(),
         system_prompt: "You are a helpful assistant.".into(),
         prompt: "Generate QA questions for this story.".into(),
+        model: "sonnet".into(),
     };
     let json = serde_json::to_string(&msg).unwrap();
     let back: ServerToContainer = serde_json::from_str(&json).unwrap();

@@ -1,15 +1,20 @@
 import * as React from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
-import { Copy, Check, RefreshCw, Key, Terminal } from 'lucide-react'
+import { Copy, Check, RefreshCw, Key, Terminal, Lock, Briefcase, Code, Palette, Shield, Megaphone, ChevronDown } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { TabSwitcher } from '@/components/ui/tab-switcher'
 import { Button } from '@/components/ui/button'
-import { InputGroup } from '@/components/ui/input'
+import { Input, InputGroup } from '@/components/ui/input'
 import { TextareaGroup } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown'
+import { Card, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
+import { Accordion, AccordionTrigger, AccordionContent } from '@/components/ui/accordion'
 import {
   useUpdateProject,
+  useUpdateQaConfig,
   getListProjectsQueryKey,
 } from '@/api/generated/projects/projects'
 import {
@@ -21,47 +26,105 @@ import {
 import { useToastStore } from '@/stores/toast-store'
 import type { ProjectResponse } from '@/api/generated/tompaAPI.schemas'
 
+// ── Q&A Configuration constants ───────────────────────────────────────────────
 
-const ALL_ROLE_IDS = [
-  'business_analyst',
-  'developer',
-  'ux_designer',
-  'security_engineer',
-  'marketing',
+const AVAILABLE_MODELS = [
+  { id: 'haiku', label: 'Haiku' },
+  { id: 'sonnet', label: 'Sonnet' },
+  { id: 'opus', label: 'Opus' },
 ] as const
 
-const GROOMING_ROLES = [
+const DETAIL_LEVELS = [
+  { level: 1, label: 'Essential only', description: 'Only irreversible or extremely expensive decisions' },
+  { level: 2, label: 'Significant', description: 'Decisions requiring days of rework' },
+  { level: 3, label: 'Standard', description: 'Decisions requiring meaningful effort to reverse' },
+  { level: 4, label: 'Thorough', description: 'Decisions that could cause inefficiency or debt' },
+  { level: 5, label: 'Comprehensive', description: 'All decisions where professionals might disagree' },
+] as const
+
+const DEFAULT_ROLE_CONFIG = {
+  model: 'sonnet',
+  detail_level: 3,
+  max_questions: 3,
+} as const
+
+interface GroomingRoleDef {
+  id: string
+  name: string
+  description: string
+  required: boolean
+  Icon: LucideIcon
+}
+
+const GROOMING_ROLE_DEFS: GroomingRoleDef[] = [
   {
     id: 'business_analyst',
     name: 'Business Analyst',
-    description: 'Clarifies business value, user personas, acceptance criteria, and scope boundaries.',
+    description: 'Requirements, acceptance criteria, business impact',
     required: true,
+    Icon: Briefcase,
   },
   {
     id: 'developer',
     name: 'Developer',
-    description: 'Surfaces technical constraints, migration effort, and API compatibility concerns.',
+    description: 'Architecture, technical feasibility, implementation details',
     required: false,
+    Icon: Code,
   },
   {
     id: 'ux_designer',
     name: 'UX Designer',
-    description: 'Reviews interaction patterns, accessibility needs, and design system reuse.',
+    description: 'User experience, accessibility, interaction design',
     required: false,
+    Icon: Palette,
   },
   {
     id: 'security_engineer',
     name: 'Security Engineer',
-    description: 'Assesses PII handling, auth requirements, and compliance obligations.',
+    description: 'Vulnerabilities, authentication, data protection',
     required: false,
+    Icon: Shield,
   },
   {
     id: 'marketing',
     name: 'Marketing Specialist',
-    description: 'Evaluates positioning, analytics instrumentation, and launch strategy.',
+    description: 'User-facing messaging, positioning, go-to-market',
     required: false,
+    Icon: Megaphone,
   },
-] as const
+]
+
+type RoleConfig = { model: string; detail_level: number; max_questions: number }
+type QaConfig = {
+  grooming: Record<string, RoleConfig>
+  planning: RoleConfig
+  implementation: RoleConfig
+}
+
+function defaultQaConfig(): QaConfig {
+  return {
+    grooming: {
+      business_analyst: { ...DEFAULT_ROLE_CONFIG },
+      developer: { ...DEFAULT_ROLE_CONFIG },
+      ux_designer: { ...DEFAULT_ROLE_CONFIG },
+      security_engineer: { ...DEFAULT_ROLE_CONFIG },
+      marketing: { ...DEFAULT_ROLE_CONFIG },
+    },
+    planning: { ...DEFAULT_ROLE_CONFIG },
+    implementation: { model: 'sonnet', detail_level: 2, max_questions: 2 },
+  }
+}
+
+function parseQaConfig(raw: Record<string, unknown>): QaConfig {
+  try {
+    const grooming = (raw.grooming as Record<string, RoleConfig>) ?? {}
+    const planning = (raw.planning as RoleConfig) ?? { ...DEFAULT_ROLE_CONFIG }
+    const implementation = (raw.implementation as RoleConfig) ?? { model: 'sonnet', detail_level: 2, max_questions: 2 }
+    return { grooming, planning, implementation }
+  } catch {
+    return defaultQaConfig()
+  }
+}
 
 const TABS = [
   { id: 'project', label: 'Project Profile' },
@@ -405,6 +468,80 @@ function ContainerRegistryTab({ projectId }: { projectId: string }) {
 
 // ── Q&A Configuration Tab ─────────────────────────────────────────────────────
 
+function RoleConfigFields({
+  config,
+  onChange,
+}: {
+  config: RoleConfig
+  onChange: (next: RoleConfig) => void
+}) {
+  const detailLevel = DETAIL_LEVELS.find((d) => d.level === config.detail_level) ?? DETAIL_LEVELS[2]
+
+  return (
+    <div className="flex flex-row items-start gap-4 pt-3 pb-6">
+      {/* Model */}
+      <div className="flex flex-1 flex-col gap-1.5">
+        <label className="text-[13px] font-medium text-muted-foreground">Model</label>
+        <DropdownMenu className="w-full">
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="w-full justify-between bg-background font-normal">
+              <span>{AVAILABLE_MODELS.find((m) => m.id === config.model)?.label ?? 'Sonnet'}</span>
+              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="w-full">
+            {AVAILABLE_MODELS.map((m) => (
+              <DropdownMenuItem
+                key={m.id}
+                checked={m.id === config.model}
+                onClick={() => onChange({ ...config, model: m.id })}
+              >
+                {m.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      {/* Detail Level */}
+      <div className="flex flex-1 flex-col gap-2">
+        <label className="text-[13px] font-medium text-muted-foreground">Detail Level</label>
+        <div className="flex gap-1">
+          {DETAIL_LEVELS.map((d) => (
+            <Button
+              key={d.level}
+              type="button"
+              variant={d.level === config.detail_level ? 'default' : 'outline'}
+              className="flex-1 h-9 px-0"
+              title={d.description}
+              onClick={() => onChange({ ...config, detail_level: d.level })}
+            >
+              {d.level}
+            </Button>
+          ))}
+        </div>
+        <p className="text-[11px] font-medium text-muted-foreground">{detailLevel.label}</p>
+      </div>
+
+      {/* Max Questions */}
+      <div className="flex flex-1 flex-col gap-1.5">
+        <label className="text-[13px] font-medium text-muted-foreground">Max Questions</label>
+        <Input
+          type="number"
+          min={1}
+          max={5}
+          value={config.max_questions}
+          onChange={(e) => {
+            const v = Math.min(5, Math.max(1, parseInt(e.target.value, 10) || 1))
+            onChange({ ...config, max_questions: v })
+          }}
+          className="py-2.5 px-4 bg-background"
+        />
+      </div>
+    </div>
+  )
+}
+
 function QaConfigTab({
   projectId,
   activeProject,
@@ -414,18 +551,21 @@ function QaConfigTab({
 }) {
   const queryClient = useQueryClient()
 
-  const defaultRoles = activeProject?.grooming_roles ?? [...ALL_ROLE_IDS]
-  const [enabledRoles, setEnabledRoles] = React.useState<string[]>(defaultRoles)
+  const initialConfig = React.useMemo(
+    () => parseQaConfig((activeProject?.qa_config as Record<string, unknown>) ?? {}),
+    [activeProject],
+  )
+
+  const [config, setConfig] = React.useState<QaConfig>(initialConfig)
 
   React.useEffect(() => {
-    if (activeProject) {
-      setEnabledRoles(activeProject.grooming_roles ?? [...ALL_ROLE_IDS])
-    }
+    setConfig(parseQaConfig((activeProject?.qa_config as Record<string, unknown>) ?? {}))
   }, [activeProject])
 
-  const isDirty = JSON.stringify([...enabledRoles].sort()) !== JSON.stringify([...defaultRoles].sort())
+  const isDirty = JSON.stringify(config) !== JSON.stringify(initialConfig)
+  const enabledGroomingCount = Object.keys(config.grooming).length
 
-  const updateProjectMutation = useUpdateProject({
+  const updateQaConfigMutation = useUpdateQaConfig({
     mutation: {
       onSuccess: (resp) => {
         if (resp.status === 200) {
@@ -437,69 +577,145 @@ function QaConfigTab({
         useToastStore.getState().addToast({ variant: 'error', title: 'Failed to save Q&A configuration' })
       },
     },
+    fetch: { credentials: 'include' },
   })
 
-  function handleToggle(roleId: string, enabled: boolean) {
-    if (roleId === 'business_analyst') return
-    setEnabledRoles((prev) =>
-      enabled ? [...prev, roleId] : prev.filter((id) => id !== roleId),
-    )
-  }
-
   function handleSave() {
-    const ordered = ALL_ROLE_IDS.filter((id) => enabledRoles.includes(id))
-    updateProjectMutation.mutate({
-      id: projectId,
-      data: { grooming_roles: ordered },
-    })
+    updateQaConfigMutation.mutate({ id: projectId, data: { qa_config: config } })
   }
 
   function handleCancel() {
-    setEnabledRoles(activeProject?.grooming_roles ?? [...ALL_ROLE_IDS])
+    setConfig(initialConfig)
+  }
+
+  function handleToggleGroomingRole(roleId: string, enabled: boolean) {
+    const next = { ...config.grooming }
+    if (enabled) {
+      next[roleId] = { ...DEFAULT_ROLE_CONFIG }
+    } else {
+      delete next[roleId]
+    }
+    setConfig((c) => ({ ...c, grooming: next }))
+  }
+
+  function handleGroomingRoleConfig(roleId: string, cfg: RoleConfig) {
+    setConfig((c) => ({ ...c, grooming: { ...c.grooming, [roleId]: cfg } }))
   }
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="rounded-2xl border border-border bg-card p-6">
-        <div className="flex flex-col gap-1 mb-5">
-          <h2 className="text-sm font-semibold text-foreground">Q&amp;A Configuration</h2>
-          <p className="text-xs text-muted-foreground">
-            Configure which roles participate in the grooming Q&amp;A session. Changes apply to all new grooming rounds in this project.
-          </p>
-        </div>
+      <Card className="rounded-2xl shadow-none">
+        <CardHeader className="gap-1 px-10 py-8 border-b border-border">
+          <CardTitle className="text-lg font-semibold">Q&amp;A Configuration</CardTitle>
+          <CardDescription className="text-sm">
+            Configure how AI roles behave during Q&amp;A sessions. Changes apply to all new Q&amp;A rounds in this project.
+          </CardDescription>
+        </CardHeader>
 
-        <div className="flex flex-col divide-y divide-border">
-          {GROOMING_ROLES.map((role) => {
-            const isEnabled = enabledRoles.includes(role.id)
-            return (
-              <div key={role.id} className="flex items-center justify-between gap-4 py-4 first:pt-0 last:pb-0">
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-sm font-medium text-foreground">{role.name}</span>
-                  {role.required ? (
-                    <span className="text-xs text-muted-foreground italic">Required — cannot be disabled</span>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">{role.description}</span>
+        <Accordion type="multiple" defaultValue={['grooming']}>
+          {/* Grooming */}
+          <AccordionTrigger
+            itemValue="grooming"
+            chevronLeft
+            className="px-10 py-5 border-b border-border"
+            rightSlot={
+              <Badge className="px-2.5 py-1 text-[12px] text-muted-foreground">
+                {enabledGroomingCount} {enabledGroomingCount === 1 ? 'role' : 'roles'}
+              </Badge>
+            }
+          >
+            <span className="text-base font-semibold text-foreground">Grooming</span>
+          </AccordionTrigger>
+          <AccordionContent itemValue="grooming" className="px-6 pt-2 pb-0 text-foreground">
+            {GROOMING_ROLE_DEFS.map((role) => {
+              const isEnabled = role.id in config.grooming
+              const cfg = config.grooming[role.id]
+              const { Icon } = role
+              const active = isEnabled || role.required
+
+              return (
+                <div key={role.id} className="border-b border-border last:border-b-0">
+                  <div className="flex items-center justify-between py-4">
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-2.5">
+                        <Icon className={`h-[18px] w-[18px] text-muted-foreground transition-opacity ${active ? '' : 'opacity-50'}`} />
+                        <span className={`text-sm font-semibold transition-colors ${active ? 'text-foreground' : 'text-muted-foreground'}`}>
+                          {role.name}
+                        </span>
+                      </div>
+                      <span className="pl-[28px] text-[12px] text-muted-foreground">{role.description}</span>
+                    </div>
+                    {role.required ? (
+                      <Badge className="flex items-center gap-1.5 px-2.5 py-1 text-[12px] text-muted-foreground">
+                        <Lock className="h-3 w-3" />
+                        Required
+                      </Badge>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span className="text-[12px] font-medium text-muted-foreground">
+                          {isEnabled ? 'Enabled' : 'Disabled'}
+                        </span>
+                        <Switch
+                          checked={isEnabled}
+                          onCheckedChange={(checked) => handleToggleGroomingRole(role.id, checked)}
+                        />
+                      </div>
+                    )}
+                  </div>
+                  {isEnabled && cfg && (
+                    <RoleConfigFields config={cfg} onChange={(next) => handleGroomingRoleConfig(role.id, next)} />
                   )}
                 </div>
-                <Switch
-                  checked={isEnabled}
-                  disabled={role.required}
-                  onCheckedChange={(checked) => handleToggle(role.id, checked)}
-                />
-              </div>
-            )
-          })}
-        </div>
-      </div>
+              )
+            })}
+          </AccordionContent>
 
-      <div className="flex items-center justify-end gap-3">
-        <Button variant="outline" onClick={handleCancel} disabled={!isDirty}>
-          Cancel
-        </Button>
-        <Button onClick={handleSave} disabled={!isDirty || updateProjectMutation.isPending}>
-          {updateProjectMutation.isPending ? 'Saving...' : 'Save Changes'}
-        </Button>
-      </div>
+          {/* Planning */}
+          <AccordionTrigger
+            itemValue="planning"
+            chevronLeft
+            className="px-10 py-5 border-b border-border"
+            rightSlot={
+              <Badge className="px-2.5 py-1 text-[12px] text-muted-foreground">Development only</Badge>
+            }
+          >
+            <span className="text-base font-semibold text-foreground">Planning</span>
+          </AccordionTrigger>
+          <AccordionContent itemValue="planning" className="px-10 pb-0 text-foreground">
+            <RoleConfigFields
+              config={config.planning}
+              onChange={(planning) => setConfig((c) => ({ ...c, planning }))}
+            />
+          </AccordionContent>
+
+          {/* Implementation */}
+          <AccordionTrigger
+            itemValue="implementation"
+            chevronLeft
+            className="px-10 py-5"
+            rightSlot={
+              <Badge className="px-2.5 py-1 text-[12px] text-muted-foreground">Development only</Badge>
+            }
+          >
+            <span className="text-base font-semibold text-foreground">Implementation</span>
+          </AccordionTrigger>
+          <AccordionContent itemValue="implementation" className="px-10 pb-0 text-foreground">
+            <RoleConfigFields
+              config={config.implementation}
+              onChange={(implementation) => setConfig((c) => ({ ...c, implementation }))}
+            />
+          </AccordionContent>
+        </Accordion>
+
+        <CardFooter className="justify-end gap-3 border-t border-border px-10 py-4">
+          <Button variant="outline" onClick={handleCancel} disabled={!isDirty}>
+            Cancel
+          </Button>
+          <Button onClick={handleSave} disabled={!isDirty || updateQaConfigMutation.isPending}>
+            {updateQaConfigMutation.isPending ? 'Saving...' : 'Save Changes'}
+          </Button>
+        </CardFooter>
+      </Card>
     </div>
   )
 }

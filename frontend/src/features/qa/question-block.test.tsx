@@ -1,7 +1,13 @@
 import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { QuestionBlock } from './question-block'
 import type { QaQuestion } from './types'
+
+function wrapper({ children }: { children: React.ReactNode }) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+}
 
 const question: QaQuestion = {
   id: 'q1',
@@ -16,40 +22,27 @@ const question: QaQuestion = {
   recommendedIndex: 0,
 }
 
+const defaultProps = {
+  roundId: 'round-1',
+  storyId: 'story-1',
+  onAnswer: vi.fn(),
+  isRollbackPoint: false as const,
+  answered: false as const,
+}
+
 describe('QuestionBlock', () => {
   it('renders question text', () => {
-    render(
-      <QuestionBlock
-        question={question}
-        onAnswer={vi.fn()}
-        isRollbackPoint={false}
-        answered={false}
-      />
-    )
+    render(<QuestionBlock question={question} {...defaultProps} />, { wrapper })
     expect(screen.getByText('Which approach should we use?')).toBeInTheDocument()
   })
 
   it('renders rationale text', () => {
-    render(
-      <QuestionBlock
-        question={question}
-        onAnswer={vi.fn()}
-        isRollbackPoint={false}
-        answered={false}
-      />
-    )
+    render(<QuestionBlock question={question} {...defaultProps} />, { wrapper })
     expect(screen.getByText('This decision affects the core architecture.')).toBeInTheDocument()
   })
 
   it('renders all option cards', () => {
-    render(
-      <QuestionBlock
-        question={question}
-        onAnswer={vi.fn()}
-        isRollbackPoint={false}
-        answered={false}
-      />
-    )
+    render(<QuestionBlock question={question} {...defaultProps} />, { wrapper })
     expect(screen.getByText('Option A')).toBeInTheDocument()
     expect(screen.getByText('Option B')).toBeInTheDocument()
     expect(screen.getByText('Option C')).toBeInTheDocument()
@@ -57,14 +50,7 @@ describe('QuestionBlock', () => {
 
   it('selecting an option calls onAnswer with correct args', () => {
     const onAnswer = vi.fn()
-    render(
-      <QuestionBlock
-        question={question}
-        onAnswer={onAnswer}
-        isRollbackPoint={false}
-        answered={false}
-      />
-    )
+    render(<QuestionBlock question={question} {...defaultProps} onAnswer={onAnswer} />, { wrapper })
     fireEvent.click(screen.getByLabelText('Select Option B'))
     expect(onAnswer).toHaveBeenCalledWith('q1', 1, null)
   })
@@ -75,48 +61,31 @@ describe('QuestionBlock', () => {
     render(
       <QuestionBlock
         question={answeredQuestion}
+        {...defaultProps}
         onAnswer={onAnswer}
-        isRollbackPoint={false}
         answered={true}
-      />
+      />,
+      { wrapper },
     )
     fireEvent.click(screen.getByLabelText('Select Option B'))
     expect(onAnswer).toHaveBeenCalledWith('q1', 1, null)
   })
 
   it('renders domain tag', () => {
-    render(
-      <QuestionBlock
-        question={question}
-        onAnswer={vi.fn()}
-        isRollbackPoint={false}
-        answered={false}
-      />
-    )
+    render(<QuestionBlock question={question} {...defaultProps} />, { wrapper })
     expect(screen.getByText('backend')).toBeInTheDocument()
   })
 
   it('shows AI suggested badge on recommended option', () => {
-    render(
-      <QuestionBlock
-        question={question}
-        onAnswer={vi.fn()}
-        isRollbackPoint={false}
-        answered={false}
-      />
-    )
+    render(<QuestionBlock question={question} {...defaultProps} />, { wrapper })
     expect(screen.getByText('AI suggested')).toBeInTheDocument()
   })
 
   it('does not show AI suggested badge after answering', () => {
     const answeredQuestion: QaQuestion = { ...question, answeredIndex: 1 }
     render(
-      <QuestionBlock
-        question={answeredQuestion}
-        onAnswer={vi.fn()}
-        isRollbackPoint={false}
-        answered={true}
-      />
+      <QuestionBlock question={answeredQuestion} {...defaultProps} answered={true} />,
+      { wrapper },
     )
     expect(screen.queryByText('AI suggested')).not.toBeInTheDocument()
   })

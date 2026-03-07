@@ -5,6 +5,7 @@ export interface Toast {
   variant: 'error' | 'success' | 'info'
   title: string
   description?: string
+  action?: { label: string; onClick: () => void }
 }
 
 interface ToastStore {

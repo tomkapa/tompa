@@ -2,12 +2,18 @@ import { cn } from '@/lib/utils'
 import type { StoryResponse, TaskSummary } from '@/api/generated/tompaAPI.schemas'
 import { TaskListItem } from '@/components/ui/task-list-item'
 import { StatusBadge } from '@/components/ui/status-badge'
+import { Button } from '@/components/ui/button'
 import type { TaskType } from '@/components/ui/task-type-icon'
+import { MarkdownEditor } from '@/components/ui/markdown-editor'
+import { MarkdownViewer } from '@/components/ui/markdown-viewer'
 
 interface StoryOverviewProps {
   story: StoryResponse
   tasks: TaskSummary[]
   onTaskClick: (taskId: string) => void
+  onApproveDescription?: () => void
+  onDescriptionSave?: (description: string) => void
+  isSavingDescription?: boolean
   className?: string
 }
 
@@ -25,7 +31,7 @@ function toStoryStatus(status: string): StoryStatusValue {
   return 'todo'
 }
 
-export function StoryOverview({ story, tasks, onTaskClick, className }: StoryOverviewProps) {
+export function StoryOverview({ story, tasks, onTaskClick, onApproveDescription, onDescriptionSave, isSavingDescription, className }: StoryOverviewProps) {
   return (
     <div
       className={cn(
@@ -34,15 +40,42 @@ export function StoryOverview({ story, tasks, onTaskClick, className }: StoryOve
       )}
     >
       {/* Panel header */}
-      <div className="flex flex-col gap-3 border-b border-border px-5 py-4">
+      <div className="flex shrink-0 flex-col gap-3 border-b border-border px-5 py-4">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-base font-semibold leading-snug text-foreground">{story.title}</h2>
           <div className="flex shrink-0 items-center gap-3">
             <StatusBadge type="story" value={toStoryStatus(story.status)} />
           </div>
         </div>
-        <p className="text-[13px] leading-relaxed text-muted-foreground">{story.description}</p>
+        <div className="max-h-52 overflow-y-auto">
+          <MarkdownEditor
+            value={story.description ?? ''}
+            onSave={onDescriptionSave ?? (() => {})}
+            isSaving={isSavingDescription}
+            readOnly={!onDescriptionSave}
+            placeholder="No description — double-click to add one."
+          />
+        </div>
       </div>
+
+      {/* Pending refined description */}
+      {story.pending_refined_description && (
+        <div className="flex shrink-0 flex-col gap-3 border-b border-border bg-accent/40 px-5 py-4">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              AI-refined description
+            </span>
+            {onApproveDescription && (
+              <Button size="default" variant="default" onClick={onApproveDescription}>
+                Approve
+              </Button>
+            )}
+          </div>
+          <div className="max-h-72 overflow-y-auto">
+            <MarkdownViewer content={story.pending_refined_description ?? ''} />
+          </div>
+        </div>
+      )}
 
       {/* Task list section */}
       <div className="flex flex-1 flex-col overflow-hidden">

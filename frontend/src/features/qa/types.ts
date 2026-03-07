@@ -15,6 +15,15 @@ export interface QaQuestion {
   answeredIndex?: number
   /** Free-form "other" answer text, if answered with custom input */
   answeredText?: string
+  /** UUID of the assigned org member, if any */
+  assignedTo?: string
+}
+
+export interface OrgMember {
+  user_id: string
+  display_name: string
+  avatar_url?: string | null
+  role: string
 }
 
 export interface QaRound {

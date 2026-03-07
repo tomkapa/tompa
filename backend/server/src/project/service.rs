@@ -4,8 +4,13 @@ use crate::{agents::prompts::grooming::GROOMING_ROLES, db::OrgTx, errors::ApiErr
 
 use super::{
     repo,
-    types::{CreateProjectRequest, ProjectError, ProjectResponse, UpdateProjectRequest},
+    types::{
+        CreateProjectRequest, ProjectError, ProjectResponse, UpdateProjectRequest,
+        UpdateQaConfigRequest,
+    },
 };
+
+const VALID_MODELS: &[&str] = &["haiku", "sonnet", "opus"];
 
 fn unique_violation_to_name_taken(e: sqlx::Error) -> ApiError {
     if let sqlx::Error::Database(ref db_err) = e
@@ -23,21 +28,82 @@ fn to_response(row: repo::ProjectRow) -> ProjectResponse {
         name: row.name,
         description: row.description,
         github_repo_url: row.github_repo_url,
-        grooming_roles: row.grooming_roles,
+        qa_config: row.qa_config,
         created_at: row.created_at,
         updated_at: row.updated_at,
     }
 }
 
-fn validate_grooming_roles(roles: &[String]) -> Result<(), ApiError> {
-    if !roles.iter().any(|r| r == "business_analyst") {
-        return Err(ProjectError::BusinessAnalystRequired.into());
+fn validate_role_config(role_id: &str, cfg: &serde_json::Value) -> Result<(), ProjectError> {
+    let model = cfg
+        .get("model")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ProjectError::InvalidQaConfig(format!("{role_id}.model is required")))?;
+    if !VALID_MODELS.contains(&model) {
+        return Err(ProjectError::InvalidQaConfig(format!(
+            "{role_id}.model must be one of haiku, sonnet, opus"
+        )));
     }
-    for role in roles {
-        if !GROOMING_ROLES.iter().any(|gr| gr.id == role.as_str()) {
-            return Err(ProjectError::InvalidRoleId.into());
+
+    let detail_level = cfg
+        .get("detail_level")
+        .and_then(|v| v.as_i64())
+        .ok_or_else(|| {
+            ProjectError::InvalidQaConfig(format!("{role_id}.detail_level is required"))
+        })?;
+    if !(1..=5).contains(&detail_level) {
+        return Err(ProjectError::InvalidQaConfig(format!(
+            "{role_id}.detail_level must be 1–5"
+        )));
+    }
+
+    let max_questions = cfg
+        .get("max_questions")
+        .and_then(|v| v.as_i64())
+        .ok_or_else(|| {
+            ProjectError::InvalidQaConfig(format!("{role_id}.max_questions is required"))
+        })?;
+    if !(1..=5).contains(&max_questions) {
+        return Err(ProjectError::InvalidQaConfig(format!(
+            "{role_id}.max_questions must be 1–5"
+        )));
+    }
+
+    Ok(())
+}
+
+fn validate_qa_config(qa_config: &serde_json::Value) -> Result<(), ApiError> {
+    let grooming = qa_config
+        .get("grooming")
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| ProjectError::InvalidQaConfig("grooming object is required".into()))?;
+
+    if !grooming.contains_key("business_analyst") {
+        return Err(
+            ProjectError::InvalidQaConfig("grooming.business_analyst is required".into()).into(),
+        );
+    }
+
+    let valid_role_ids: Vec<&str> = GROOMING_ROLES.iter().map(|r| r.id).collect();
+    for role_id in grooming.keys() {
+        if !valid_role_ids.contains(&role_id.as_str()) {
+            return Err(
+                ProjectError::InvalidQaConfig(format!("unknown grooming role: {role_id}")).into(),
+            );
         }
+        validate_role_config(role_id, &grooming[role_id]).map_err(ApiError::from)?;
     }
+
+    let planning = qa_config
+        .get("planning")
+        .ok_or_else(|| ProjectError::InvalidQaConfig("planning config is required".into()))?;
+    validate_role_config("planning", planning).map_err(ApiError::from)?;
+
+    let implementation = qa_config
+        .get("implementation")
+        .ok_or_else(|| ProjectError::InvalidQaConfig("implementation config is required".into()))?;
+    validate_role_config("implementation", implementation).map_err(ApiError::from)?;
+
     Ok(())
 }
 
@@ -86,9 +152,6 @@ pub async fn update_project(
     {
         return Err(ProjectError::NameRequired.into());
     }
-    if let Some(ref roles) = req.grooming_roles {
-        validate_grooming_roles(roles)?;
-    }
     let org_id = tx.org_id;
     let row = repo::update_project(
         tx,
@@ -97,11 +160,23 @@ pub async fn update_project(
         req.name.as_deref(),
         req.description.as_deref(),
         req.github_repo_url.as_deref(),
-        req.grooming_roles,
     )
     .await
     .map_err(unique_violation_to_name_taken)?
     .ok_or(ApiError::NotFound)?;
+    Ok(to_response(row))
+}
+
+pub async fn update_qa_config(
+    tx: &mut OrgTx,
+    id: Uuid,
+    req: UpdateQaConfigRequest,
+) -> Result<ProjectResponse, ApiError> {
+    validate_qa_config(&req.qa_config)?;
+    let org_id = tx.org_id;
+    let row = repo::update_qa_config(tx, id, org_id, &req.qa_config)
+        .await?
+        .ok_or(ApiError::NotFound)?;
     Ok(to_response(row))
 }
 

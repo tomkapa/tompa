@@ -29,6 +29,15 @@ export function Toaster() {
             {toast.description && (
               <p className="mt-1 text-xs opacity-80">{toast.description}</p>
             )}
+            {toast.action && (
+              <button
+                type="button"
+                onClick={() => { toast.action!.onClick(); removeToast(toast.id) }}
+                className="mt-2 text-xs font-medium underline underline-offset-2 opacity-80 hover:opacity-100 transition-opacity"
+              >
+                {toast.action.label}
+              </button>
+            )}
           </div>
           <button
             type="button"

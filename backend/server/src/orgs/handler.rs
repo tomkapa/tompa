@@ -13,13 +13,59 @@ use crate::{
 
 use super::{
     service,
-    types::{CreateOrgRequest, OrgResponse},
+    types::{CreateOrgRequest, OrgMemberResponse, OrgResponse, UpdateOrgRequest},
 };
 
 pub fn router(state: AppState) -> Router<AppState> {
     Router::new()
         .route("/api/v1/orgs", get(list_orgs).post(create_org))
+        .route("/api/v1/orgs/members", get(list_members))
+        .route(
+            "/api/v1/orgs/current",
+            axum::routing::patch(update_current_org),
+        )
         .route_layer(axum::middleware::from_fn_with_state(state, require_auth))
+}
+
+/// PATCH /api/v1/orgs/current — rename the current user's active organization.
+#[utoipa::path(
+    patch,
+    path = "/api/v1/orgs/current",
+    tag = "orgs",
+    request_body = UpdateOrgRequest,
+    responses(
+        (status = 204, description = "Org renamed"),
+        (status = 400, description = "Validation error"),
+        (status = 401, description = "Unauthorized"),
+    ),
+    security(("cookieAuth" = []))
+)]
+pub(crate) async fn update_current_org(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+    Json(req): Json<UpdateOrgRequest>,
+) -> Result<StatusCode, ApiError> {
+    service::update_org(&state, auth.org_id, req).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// GET /api/v1/orgs/members — list all members of the current org.
+#[utoipa::path(
+    get,
+    path = "/api/v1/orgs/members",
+    tag = "orgs",
+    responses(
+        (status = 200, description = "List of org members", body = [OrgMemberResponse]),
+        (status = 401, description = "Unauthorized"),
+    ),
+    security(("cookieAuth" = []))
+)]
+pub(crate) async fn list_members(
+    State(state): State<AppState>,
+    Extension(auth): Extension<AuthContext>,
+) -> Result<Json<Vec<OrgMemberResponse>>, ApiError> {
+    let members = service::list_members(&state, auth.org_id).await?;
+    Ok(Json(members))
 }
 
 /// GET /api/v1/orgs — list all orgs the authenticated user belongs to.

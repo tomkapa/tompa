@@ -20,6 +20,8 @@ import { GripVertical, Pencil, GitBranch, Merge, Split, Plus, X, Check } from 'l
 import { cn } from '@/lib/utils'
 import { TaskTypeIcon, type TaskType } from '@/components/ui/task-type-icon'
 import { Button } from '@/components/ui/button'
+import { IconButton } from '@/components/ui/icon-button'
+import { Input } from '@/components/ui/input'
 
 export interface ProposedTask {
   id: string
@@ -64,9 +66,9 @@ function SplitEditor({ task, onApply, onCancel }: SplitEditorProps) {
     <div className="flex flex-col gap-3 rounded-lg border-2 border-primary bg-card p-4">
       <div className="flex items-center justify-between">
         <span className="text-sm font-semibold text-foreground">Split: {task.name}</span>
-        <button onClick={onCancel} className="text-muted-foreground hover:text-foreground">
+        <IconButton type="button" variant="ghost" onClick={onCancel} className="h-6 w-6 text-muted-foreground">
           <X size={16} />
-        </button>
+        </IconButton>
       </div>
 
       <div className="flex flex-col gap-2">
@@ -75,26 +77,24 @@ function SplitEditor({ task, onApply, onCancel }: SplitEditorProps) {
             <span className="w-5 shrink-0 text-[13px] font-medium text-muted-foreground">
               {idx + 1}.
             </span>
-            <input
+            <Input
               value={val}
               onChange={(e) => updateInput(idx, e.target.value)}
               placeholder={`Subtask ${idx + 1}`}
-              className={cn(
-                'flex-1 rounded-lg border border-border bg-accent px-3 py-2',
-                'text-[13px] text-foreground placeholder:text-muted-foreground',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
-              )}
+              className="flex-1 rounded-lg px-3 py-2 h-auto text-[13px]"
             />
           </div>
         ))}
 
-        <button
+        <Button
+          type="button"
+          variant="ghost"
           onClick={addInput}
-          className="flex items-center gap-1 px-0 py-1 text-xs font-medium text-primary hover:text-primary/80"
+          className="h-auto px-0 py-1 text-xs font-medium text-primary hover:text-primary/80 hover:bg-transparent bg-transparent"
+          leadingIcon={<Plus size={14} />}
         >
-          <Plus size={14} />
           Add subtask
-        </button>
+        </Button>
       </div>
 
       <div className="flex justify-end gap-2">
@@ -159,12 +159,11 @@ function SortableTaskItem({
       )}
     >
       {/* Checkbox */}
-      <button
+      <Button
+        type="button"
+        variant="ghost"
         onClick={onToggleSelect}
-        className={cn(
-          'flex h-full w-10 shrink-0 items-center justify-center text-muted-foreground',
-          'hover:text-foreground focus-visible:outline-none'
-        )}
+        className="h-full w-10 rounded-none shrink-0 px-0 text-muted-foreground hover:text-foreground hover:bg-transparent"
       >
         <span
           className={cn(
@@ -174,7 +173,7 @@ function SortableTaskItem({
         >
           {selected && <Check size={10} className="text-[var(--color-info)]" />}
         </span>
-      </button>
+      </Button>
 
       {/* Drag handle */}
       <div
@@ -190,7 +189,7 @@ function SortableTaskItem({
         <TaskTypeIcon type={task.taskType} />
 
         {editing ? (
-          <input
+          <Input
             autoFocus
             value={editValue}
             onChange={(e) => setEditValue(e.target.value)}
@@ -202,10 +201,7 @@ function SortableTaskItem({
                 setEditing(false)
               }
             }}
-            className={cn(
-              'flex-1 min-w-0 rounded border border-primary bg-transparent px-1 py-0.5',
-              'text-sm text-foreground focus-visible:outline-none'
-            )}
+            className="flex-1 min-w-0 rounded border-primary bg-transparent px-1 py-0.5 h-auto text-sm focus-visible:ring-0"
           />
         ) : (
           <span className="flex-1 min-w-0 truncate text-sm text-foreground">{task.name}</span>
@@ -233,15 +229,14 @@ function SortableTaskItem({
       </div>
 
       {/* Edit button */}
-      <button
+      <IconButton
+        type="button"
+        variant="ghost"
         onClick={() => setEditing(true)}
-        className={cn(
-          'flex h-full w-9 shrink-0 items-center justify-center',
-          'text-muted-foreground hover:text-foreground focus-visible:outline-none'
-        )}
+        className="h-full w-9 rounded-none text-muted-foreground"
       >
         <Pencil size={14} />
-      </button>
+      </IconButton>
     </div>
   )
 }

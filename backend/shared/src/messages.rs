@@ -8,6 +8,7 @@ pub enum ServerToContainer {
         session_id: Uuid,
         system_prompt: String,
         prompt: String,
+        model: String,
     },
     Ping,
 }

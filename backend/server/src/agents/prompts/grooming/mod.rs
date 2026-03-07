@@ -56,6 +56,8 @@ pub fn build_grooming_prompt(
     knowledge: &[KnowledgeEntry],
     codebase_context: &str,
     previous_decisions: &[QaDecision],
+    detail_level_text: &str,
+    max_questions: i64,
 ) -> (String, String) {
     let conventions = filter_knowledge(knowledge, KnowledgeCategory::Convention);
     let adrs = filter_knowledge(knowledge, KnowledgeCategory::Adr);
@@ -65,6 +67,9 @@ pub fn build_grooming_prompt(
         r#"You are a {role_title} participating in a software story grooming session.
 
 {instructions}
+
+QUESTION SCOPE: {detail_level_text}
+QUESTION LIMIT: Generate at most {max_questions} questions for your domain. Prioritize by impact — if you have more potential questions than your limit, keep only the most consequential ones.
 
 For each question:
 - "rationale": One sentence explaining why this decision matters and its downstream consequences. Be specific to the story context.
@@ -99,6 +104,8 @@ Respond ONLY with valid JSON in exactly this format — no other text, no markdo
         role_title = role.title,
         instructions = role.instructions,
         domain = role.domain,
+        detail_level_text = detail_level_text,
+        max_questions = max_questions,
     );
 
     let prompt = format!(
@@ -117,7 +124,7 @@ Respond ONLY with valid JSON in exactly this format — no other text, no markdo
 ## Decisions Already Made
 {previous}
 
-Based on your {role_title} perspective, generate 0–4 clarifying questions about this story.
+Based on your {role_title} perspective, generate 0–{max_questions} clarifying questions about this story.
 Each question must have 2–5 mutually-exclusive predefined answer options.
 Do NOT ask questions already answered in "Decisions Already Made"."#,
         conventions = if conventions.is_empty() {
@@ -138,6 +145,7 @@ Do NOT ask questions already answered in "Decisions Already Made"."#,
         story = story_description,
         previous = previous,
         role_title = role.title,
+        max_questions = max_questions,
     );
 
     (system, prompt)
@@ -159,6 +167,7 @@ pub struct AccumulatedQuestion<'a> {
 /// entirely new questions.
 ///
 /// Returns `(system_prompt, prompt)`.
+#[allow(clippy::too_many_arguments)]
 pub fn build_sequential_grooming_prompt(
     role: &GroomingRole,
     story_description: &str,
@@ -166,6 +175,8 @@ pub fn build_sequential_grooming_prompt(
     codebase_context: &str,
     previous_decisions: &[QaDecision],
     accumulated_questions: &[AccumulatedQuestion<'_>],
+    detail_level_text: &str,
+    max_questions: i64,
 ) -> (String, String) {
     let conventions = filter_knowledge(knowledge, KnowledgeCategory::Convention);
     let adrs = filter_knowledge(knowledge, KnowledgeCategory::Adr);
@@ -176,6 +187,9 @@ pub fn build_sequential_grooming_prompt(
         r#"You are a {role_title} participating in a software story grooming session.
 
 {instructions}
+
+QUESTION SCOPE: {detail_level_text}
+QUESTION LIMIT: Generate at most {max_questions} NEW questions for your domain. Prioritize by impact — keep only the most consequential ones.
 
 Other roles have already raised the questions listed under "Existing Questions".
 Your job is to:
@@ -221,6 +235,8 @@ Rules:
         role_title = role.title,
         instructions = role.instructions,
         domain = role.domain,
+        detail_level_text = detail_level_text,
+        max_questions = max_questions,
     );
 
     let prompt = format!(
@@ -244,7 +260,7 @@ Rules:
 
 Based on your {role_title} perspective:
 - Augment existing questions where you add meaningful cross-domain insight.
-- Raise 0–3 NEW questions not already covered above.
+- Raise 0–{max_questions} NEW questions not already covered above.
 Do NOT duplicate questions already in "Existing Questions"."#,
         conventions = if conventions.is_empty() {
             "None documented.".into()
@@ -265,6 +281,7 @@ Do NOT duplicate questions already in "Existing Questions"."#,
         previous = previous,
         existing = existing,
         role_title = role.title,
+        max_questions = max_questions,
     );
 
     (system, prompt)

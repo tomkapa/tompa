@@ -25,6 +25,22 @@ pub struct QaRoundRow {
 const ROUND_COLUMNS: &str =
     "id, org_id, story_id, task_id, stage, round_number, status, content, created_at, updated_at";
 
+/// Return true if user_id is an active member of org_id.
+pub async fn is_org_member(
+    tx: &mut sqlx::Transaction<'_, Postgres>,
+    org_id: Uuid,
+    user_id: Uuid,
+) -> Result<bool, sqlx::Error> {
+    let exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM org_members WHERE org_id = $1 AND user_id = $2)",
+    )
+    .bind(org_id)
+    .bind(user_id)
+    .fetch_one(&mut **tx)
+    .await?;
+    Ok(exists)
+}
+
 /// List rounds for a story (task_id IS NULL) or for a specific task, with
 /// optional stage filter. Ordered by round_number ascending.
 pub async fn list_rounds(

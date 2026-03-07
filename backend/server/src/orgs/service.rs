@@ -4,7 +4,7 @@ use crate::{errors::ApiError, state::AppState};
 
 use super::{
     repo,
-    types::{CreateOrgRequest, OrgError, OrgResponse},
+    types::{CreateOrgRequest, OrgError, OrgMemberResponse, OrgResponse, UpdateOrgRequest},
 };
 
 pub async fn list_orgs(state: &AppState, user_id: Uuid) -> Result<Vec<OrgResponse>, ApiError> {
@@ -16,6 +16,35 @@ pub async fn list_orgs(state: &AppState, user_id: Uuid) -> Result<Vec<OrgRespons
             name: r.name,
             role: r.role,
             created_at: r.created_at,
+        })
+        .collect())
+}
+
+pub async fn update_org(
+    state: &AppState,
+    org_id: Uuid,
+    req: UpdateOrgRequest,
+) -> Result<(), ApiError> {
+    let name = req.name.trim().to_string();
+    if name.is_empty() {
+        return Err(OrgError::NameRequired.into());
+    }
+    repo::rename_org(&state.pool, org_id, &name).await?;
+    Ok(())
+}
+
+pub async fn list_members(
+    state: &AppState,
+    org_id: Uuid,
+) -> Result<Vec<OrgMemberResponse>, ApiError> {
+    let rows = repo::list_org_members(&state.pool, org_id).await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| OrgMemberResponse {
+            user_id: r.user_id,
+            display_name: r.display_name,
+            avatar_url: r.avatar_url,
+            role: r.role,
         })
         .collect())
 }

@@ -1188,6 +1188,7 @@ async fn answering_last_question_sends_answer_received_to_agent(pool: PgPool) {
             session_id,
             system_prompt,
             prompt,
+            ..
         } => {
             // session_id should be a valid UUID (non-nil).
             assert_ne!(session_id, Uuid::nil());

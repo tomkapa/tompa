@@ -24,6 +24,7 @@ pub enum ClaudeCodeMessage {
         session_id: Uuid,
         system_prompt: String,
         prompt: String,
+        model: String,
     },
 }
 
@@ -67,6 +68,7 @@ impl ClaudeCode {
                     session_id,
                     system_prompt,
                     prompt,
+                    model,
                 } => {
                     let binary = self.binary.clone();
                     let sem = self.semaphore.clone();
@@ -81,8 +83,8 @@ impl ClaudeCode {
                             }
                         };
 
-                        info!(%session_id, "claude execution started");
-                        let result = execute_claude(&binary, &system_prompt, &prompt).await;
+                        info!(%session_id, %model, "claude execution started");
+                        let result = execute_claude(&binary, &system_prompt, &prompt, &model).await;
 
                         let response = match result {
                             Ok(output) => {
@@ -126,11 +128,18 @@ impl ClaudeCode {
     }
 }
 
-async fn execute_claude(binary: &str, system_prompt: &str, prompt: &str) -> Result<ClaudeOutput> {
+async fn execute_claude(
+    binary: &str,
+    system_prompt: &str,
+    prompt: &str,
+    model: &str,
+) -> Result<ClaudeOutput> {
     let output = Command::new(binary)
         .arg("--print")
         .arg("--output-format")
         .arg("json")
+        .arg("--model")
+        .arg(model)
         .arg("--system-prompt")
         .arg(system_prompt)
         .arg(prompt)
@@ -180,6 +189,7 @@ mod tests {
             script.path().to_str().unwrap(),
             "you are helpful",
             "what is 6*7",
+            "sonnet",
         )
         .await
         .unwrap();
@@ -190,7 +200,7 @@ mod tests {
     #[tokio::test]
     async fn execute_claude_is_error_flag() {
         let script = mock_claude_script(r#"{"result": "something went wrong", "is_error": true}"#);
-        let out = execute_claude(script.path().to_str().unwrap(), "sys", "prompt")
+        let out = execute_claude(script.path().to_str().unwrap(), "sys", "prompt", "sonnet")
             .await
             .unwrap();
         assert!(out.is_error);
@@ -199,7 +209,8 @@ mod tests {
     #[tokio::test]
     async fn execute_claude_nonzero_exit() {
         let script = mock_claude_script_fail("bad input");
-        let result = execute_claude(script.path().to_str().unwrap(), "sys", "prompt").await;
+        let result =
+            execute_claude(script.path().to_str().unwrap(), "sys", "prompt", "sonnet").await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("bad input"));
     }
@@ -220,6 +231,7 @@ mod tests {
                 session_id,
                 system_prompt: "sys".into(),
                 prompt: "hello".into(),
+                model: "sonnet".into(),
             })
             .await
             .unwrap();
@@ -257,6 +269,7 @@ mod tests {
                 session_id,
                 system_prompt: "sys".into(),
                 prompt: "hello".into(),
+                model: "sonnet".into(),
             })
             .await
             .unwrap();
@@ -294,6 +307,7 @@ mod tests {
                 session_id,
                 system_prompt: "sys".into(),
                 prompt: "hello".into(),
+                model: "sonnet".into(),
             })
             .await
             .unwrap();
@@ -340,6 +354,7 @@ mod tests {
                     session_id: Uuid::now_v7(),
                     system_prompt: "sys".into(),
                     prompt: "hi".into(),
+                    model: "sonnet".into(),
                 })
                 .await
                 .unwrap();

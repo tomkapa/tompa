@@ -2,6 +2,8 @@ import * as React from 'react'
 import { ChevronDown, Check, Search, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ProjectResponse } from '@/api/generated/tompaAPI.schemas'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 
 interface ProjectSelectorProps {
   projects: ProjectResponse[]
@@ -63,17 +65,18 @@ export function ProjectSelector({
   return (
     <div className="relative" ref={containerRef}>
       {/* Trigger */}
-      <button
+      <Button
         type="button"
+        variant="ghost"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 rounded-md bg-accent px-2.5 py-1.5 transition-colors hover:bg-accent/80"
+        className="rounded-md px-2.5 py-1.5 h-auto bg-accent hover:bg-accent/80"
       >
         <span className="h-2 w-2 shrink-0 rounded-full bg-[#A78BFA]" />
         <span className="text-sm font-medium text-foreground">
           {activeProject?.name ?? 'Select project'}
         </span>
         <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-      </button>
+      </Button>
 
       {/* Dropdown */}
       {open && (
@@ -82,8 +85,8 @@ export function ProjectSelector({
           <div className="p-2">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <input
-                className="h-9 w-full rounded-full border border-input bg-accent pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              <Input
+                className="h-9 pl-9 pr-3 py-0"
                 placeholder="Search projects..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -97,13 +100,14 @@ export function ProjectSelector({
           {/* Project list */}
           <div className="p-1">
             {filtered.map((project) => (
-              <button
+              <Button
                 key={project.id}
                 type="button"
+                variant="ghost"
                 onClick={() => handleSelect(project.id)}
                 className={cn(
-                  'flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-left transition-colors',
-                  project.id === activeProjectId ? 'bg-accent' : 'hover:bg-accent/60',
+                  'w-full rounded-md px-3 py-2.5 h-auto justify-start',
+                  project.id === activeProjectId ? 'bg-accent' : 'bg-transparent hover:bg-accent/60',
                 )}
               >
                 <span className="h-2 w-2 shrink-0 rounded-full bg-[#A78BFA]" />
@@ -118,7 +122,7 @@ export function ProjectSelector({
                 {project.id === activeProjectId && (
                   <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
                 )}
-              </button>
+              </Button>
             ))}
             {filtered.length === 0 && (
               <p className="px-3 py-2 text-sm text-muted-foreground">No projects found</p>
@@ -129,18 +133,19 @@ export function ProjectSelector({
 
           {/* Create new */}
           <div className="p-1 pb-2">
-            <button
+            <Button
               type="button"
+              variant="ghost"
               onClick={() => {
                 setOpen(false)
                 setSearch('')
                 onCreateNew()
               }}
-              className="flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-left transition-colors hover:bg-accent/60"
+              className="w-full rounded-md px-3 py-2.5 h-auto justify-start bg-transparent hover:bg-accent/60"
+              leadingIcon={<Plus className="h-3.5 w-3.5 text-muted-foreground" />}
             >
-              <Plus className="h-3.5 w-3.5 text-muted-foreground" />
               <span className="text-sm text-muted-foreground">Create new project</span>
-            </button>
+            </Button>
           </div>
         </div>
       )}

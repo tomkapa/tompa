@@ -1,10 +1,12 @@
 import * as React from 'react'
-import { Bell, Search, Plus, Filter, Settings, CircleDot, Tag, ChevronDown, ChevronUp, X, Check } from 'lucide-react'
+import { Bell, Search, Plus, Filter, Settings, CircleDot, Tag, ChevronDown, ChevronUp, X } from 'lucide-react'
 import { useParams, useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
+import { IconButton } from '@/components/ui/icon-button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { AttentionDot } from '@/components/ui/attention-dot'
 import { StoriesTable } from '@/features/stories/stories-table'
@@ -96,10 +98,11 @@ function AppHeader({ searchValue, onSearchChange, hasNotification, projectSelect
     <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-background px-4 md:px-6">
       {/* Left — brand + divider + project selector */}
       <div className="flex items-center gap-3 md:gap-4">
-        <button
+        <Button
           type="button"
+          variant="ghost"
           onClick={onBrandClick}
-          className="flex items-center gap-2 rounded-lg transition-opacity hover:opacity-80"
+          className="gap-2 rounded-lg h-auto px-0 bg-transparent hover:bg-transparent hover:opacity-80"
         >
           <div
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px]"
@@ -111,7 +114,7 @@ function AppHeader({ searchValue, onSearchChange, hasNotification, projectSelect
           <span className="hidden text-base font-semibold leading-none text-foreground md:inline">
             Tompa
           </span>
-        </button>
+        </Button>
         <div className="hidden h-6 w-px bg-border md:block" />
         {projectSelector}
       </div>
@@ -119,13 +122,14 @@ function AppHeader({ searchValue, onSearchChange, hasNotification, projectSelect
       {/* Center — global search */}
       <div className="flex items-center">
         {/* Mobile: icon-only search button */}
-        <button
+        <IconButton
           type="button"
+          variant="ghost"
           aria-label="Search"
-          className="flex md:hidden h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className="md:hidden h-9 w-9 text-muted-foreground"
         >
           <Search className="h-4 w-4" />
-        </button>
+        </IconButton>
         {/* Desktop: full search bar */}
         <div className="relative hidden md:block w-[400px]">
           <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -145,30 +149,31 @@ function AppHeader({ searchValue, onSearchChange, hasNotification, projectSelect
       {/* Right — notification bell + user avatar */}
       <div className="flex items-center gap-2 md:gap-3">
         <div className="relative">
-          <button
+          <IconButton
             type="button"
+            variant="ghost"
             aria-label="Notifications"
-            className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="text-muted-foreground"
           >
             <Bell className="h-5 w-5" />
-          </button>
+          </IconButton>
           {hasNotification && (
             <span className="absolute right-1 top-1">
               <AttentionDot />
             </span>
           )}
         </div>
-        <button
+        <IconButton
           type="button"
+          variant="ghost"
           aria-label="Settings"
           onClick={onSettingsClick}
           className={cn(
-            'flex h-10 w-10 items-center justify-center rounded-full transition-colors hover:bg-accent hover:text-foreground',
             isSettingsActive ? 'bg-accent text-foreground' : 'text-muted-foreground'
           )}
         >
           <Settings className="h-5 w-5" />
-        </button>
+        </IconButton>
         <Avatar initials="JD" size="default" />
       </div>
     </header>
@@ -246,7 +251,19 @@ export function AppLayout() {
   }, [keysResp])
 
   // ── SSE connection ─────────────────────────────────────────────────────────
-  useSSE(projectId)
+  useSSE(
+    projectId,
+    user?.user_id ?? null,
+    React.useCallback(
+      (storyId: string) => {
+        void navigate({
+          to: '/projects/$projectSlug/stories/$storyId',
+          params: { projectSlug, storyId },
+        })
+      },
+      [navigate, projectSlug],
+    ),
+  )
   const hasNotification = useSSEStore((s) => s.hasNotification)
 
   // Close agent dialog when navigating to settings
@@ -495,14 +512,13 @@ export function AppLayout() {
               <div className="flex shrink-0 items-center gap-3" ref={filterBarRef}>
                 {/* Status filter pill */}
                 <div className="relative">
-                  <button
+                  <Button
                     type="button"
+                    variant="outline"
                     onClick={() => setOpenFilter(openFilter === 'status' ? null : 'status')}
                     className={cn(
-                      'flex items-center gap-2 rounded-full border px-3 py-1.5 text-[13px] font-medium transition-colors',
-                      filterStatus.size > 0
-                        ? 'border-primary bg-background text-foreground'
-                        : 'border-border bg-background text-foreground hover:bg-accent'
+                      'px-3 py-1.5 h-auto text-[13px] bg-background',
+                      filterStatus.size > 0 ? 'border-primary' : 'border-border hover:bg-accent'
                     )}
                   >
                     <CircleDot className="h-3.5 w-3.5 text-muted-foreground" />
@@ -517,7 +533,7 @@ export function AppLayout() {
                     ) : (
                       <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
                     )}
-                  </button>
+                  </Button>
 
                   {openFilter === 'status' && (
                     <div className="absolute left-0 top-full z-50 mt-2 w-[220px] rounded-2xl border border-border bg-popover p-1.5 shadow-lg animate-in fade-in-0 zoom-in-95">
@@ -529,9 +545,7 @@ export function AppLayout() {
                             filterStatus.has(s) && 'bg-accent'
                           )}
                         >
-                          <input
-                            type="checkbox"
-                            className="sr-only peer"
+                          <Checkbox
                             checked={filterStatus.has(s)}
                             onChange={() => setFilterStatus((prev) => {
                               const next = new Set(prev)
@@ -539,9 +553,6 @@ export function AppLayout() {
                               return next
                             })}
                           />
-                          <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[6px] border border-input bg-background peer-checked:border-primary peer-checked:bg-primary">
-                            <Check className="h-3 w-3 text-primary-foreground opacity-0 peer-checked:opacity-100" />
-                          </div>
                           <span className={cn(
                             'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',
                             s === 'in_progress' && 'bg-[var(--color-info)] text-[var(--color-info-foreground)]',
@@ -558,14 +569,13 @@ export function AppLayout() {
 
                 {/* Type filter pill */}
                 <div className="relative">
-                  <button
+                  <Button
                     type="button"
+                    variant="outline"
                     onClick={() => setOpenFilter(openFilter === 'type' ? null : 'type')}
                     className={cn(
-                      'flex items-center gap-2 rounded-full border px-3 py-1.5 text-[13px] font-medium transition-colors',
-                      filterType.size > 0
-                        ? 'border-primary bg-background text-foreground'
-                        : 'border-border bg-background text-foreground hover:bg-accent'
+                      'px-3 py-1.5 h-auto text-[13px] bg-background',
+                      filterType.size > 0 ? 'border-primary' : 'border-border hover:bg-accent'
                     )}
                   >
                     <Tag className="h-3.5 w-3.5 text-muted-foreground" />
@@ -580,7 +590,7 @@ export function AppLayout() {
                     ) : (
                       <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
                     )}
-                  </button>
+                  </Button>
 
                   {openFilter === 'type' && (
                     <div className="absolute left-0 top-full z-50 mt-2 w-[220px] rounded-2xl border border-border bg-popover p-1.5 shadow-lg animate-in fade-in-0 zoom-in-95">
@@ -592,9 +602,7 @@ export function AppLayout() {
                             filterType.has(t) && 'bg-accent'
                           )}
                         >
-                          <input
-                            type="checkbox"
-                            className="sr-only peer"
+                          <Checkbox
                             checked={filterType.has(t)}
                             onChange={() => setFilterType((prev) => {
                               const next = new Set(prev)
@@ -602,9 +610,6 @@ export function AppLayout() {
                               return next
                             })}
                           />
-                          <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded-[6px] border border-input bg-background peer-checked:border-primary peer-checked:bg-primary">
-                            <Check className="h-3 w-3 text-primary-foreground opacity-0 peer-checked:opacity-100" />
-                          </div>
                           <span className="capitalize text-sm">{t}</span>
                         </label>
                       ))}
@@ -617,40 +622,43 @@ export function AppLayout() {
                   <>
                     <div className="h-5 w-px bg-border" />
                     {Array.from(filterStatus).map((s) => (
-                      <button
+                      <Button
                         key={`status-${s}`}
                         type="button"
+                        variant="ghost"
                         onClick={() => setFilterStatus((prev) => { const next = new Set(prev); next.delete(s); return next })}
                         className={cn(
-                          'flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium',
-                          s === 'in_progress' && 'bg-[var(--color-info)] text-[var(--color-info-foreground)]',
-                          s === 'todo' && 'bg-secondary text-secondary-foreground',
-                          s === 'done' && 'bg-[var(--color-success)] text-[var(--color-success-foreground)]',
+                          'gap-1.5 px-2.5 py-1 h-auto text-xs font-medium',
+                          s === 'in_progress' && 'bg-[var(--color-info)] text-[var(--color-info-foreground)] hover:bg-[var(--color-info)]/80',
+                          s === 'todo' && 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
+                          s === 'done' && 'bg-[var(--color-success)] text-[var(--color-success-foreground)] hover:bg-[var(--color-success)]/80',
                         )}
                       >
                         {s === 'in_progress' ? 'In Progress' : s === 'todo' ? 'To Do' : 'Done'}
                         <X className="h-3 w-3" />
-                      </button>
+                      </Button>
                     ))}
                     {Array.from(filterType).map((t) => (
-                      <button
+                      <Button
                         key={`type-${t}`}
                         type="button"
+                        variant="secondary"
                         onClick={() => setFilterType((prev) => { const next = new Set(prev); next.delete(t); return next })}
-                        className="flex items-center gap-1.5 rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground"
+                        className="gap-1.5 px-2.5 py-1 h-auto text-xs font-medium"
                       >
                         <span className="capitalize">{t}</span>
                         <X className="h-3 w-3" />
-                      </button>
+                      </Button>
                     ))}
                     <div className="flex-1" />
-                    <button
+                    <Button
                       type="button"
-                      className="text-[13px] text-muted-foreground hover:text-foreground"
+                      variant="ghost"
                       onClick={() => { setFilterStatus(new Set()); setFilterType(new Set()) }}
+                      className="h-auto px-0 py-0 text-[13px] text-muted-foreground hover:text-foreground bg-transparent hover:bg-transparent"
                     >
                       Clear all
-                    </button>
+                    </Button>
                   </>
                 )}
               </div>

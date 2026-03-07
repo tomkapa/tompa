@@ -61,6 +61,44 @@ pub async fn add_org_member(
     Ok(())
 }
 
+/// Rename an organization by id.
+pub async fn rename_org(pool: &PgPool, org_id: Uuid, name: &str) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE organizations SET name = $1, updated_at = now() WHERE id = $2 AND deleted_at IS NULL")
+        .bind(name)
+        .bind(org_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+#[derive(sqlx::FromRow)]
+pub struct OrgMemberRow {
+    pub user_id: Uuid,
+    pub display_name: String,
+    pub avatar_url: Option<String>,
+    pub role: String,
+}
+
+/// List all active members of an org with their user profile data.
+pub async fn list_org_members(
+    pool: &PgPool,
+    org_id: Uuid,
+) -> Result<Vec<OrgMemberRow>, sqlx::Error> {
+    sqlx::query_as::<_, OrgMemberRow>(
+        r#"
+        SELECT om.user_id, u.display_name, u.avatar_url, om.role
+        FROM org_members om
+        JOIN users u ON u.id = om.user_id
+        WHERE om.org_id = $1
+          AND u.deleted_at IS NULL
+        ORDER BY om.created_at
+        "#,
+    )
+    .bind(org_id)
+    .fetch_all(pool)
+    .await
+}
+
 /// Return true if user_id is a member of org_id.
 pub async fn is_member(pool: &PgPool, org_id: Uuid, user_id: Uuid) -> Result<bool, sqlx::Error> {
     let exists: bool = sqlx::query_scalar(

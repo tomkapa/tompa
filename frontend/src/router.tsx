@@ -9,15 +9,21 @@ import { QueryClient } from '@tanstack/react-query'
 import { AppLayout } from '@/features/layout/app-layout'
 import { StoryModal } from '@/features/stories/story-modal'
 import { LoginPage } from '@/features/auth/login-page'
+import { OnboardingPage } from '@/features/auth/onboarding-page'
+import { isOnboardingComplete } from '@/features/auth/onboarding-storage'
 import { me } from '@/api/generated/auth/auth'
 
 // ── Auth check ───────────────────────────────────────────────────────────────
-async function checkAuth() {
+type AuthResult = { authed: false } | { authed: true; userId: string; needsOnboarding: boolean }
+
+async function checkAuth(): Promise<AuthResult> {
   try {
     const resp = await me({ credentials: 'include' })
-    return resp.status === 200
+    if (resp.status !== 200) return { authed: false }
+    const userId = resp.data.user_id
+    return { authed: true, userId, needsOnboarding: !isOnboardingComplete(userId) }
   } catch {
-    return false
+    return { authed: false }
   }
 }
 
@@ -30,11 +36,10 @@ const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
   beforeLoad: async () => {
-    const authed = await checkAuth()
-    if (authed) {
-      throw redirect({ to: '/projects/$projectSlug', params: { projectSlug: 'default' } })
-    }
-    throw redirect({ to: '/login' })
+    const result = await checkAuth()
+    if (!result.authed) throw redirect({ to: '/login' })
+    if (result.needsOnboarding) throw redirect({ to: '/onboarding' })
+    throw redirect({ to: '/projects/$projectSlug', params: { projectSlug: 'default' } })
   },
 })
 
@@ -42,22 +47,34 @@ const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
   beforeLoad: async () => {
-    const authed = await checkAuth()
-    if (authed) {
+    const result = await checkAuth()
+    if (!result.authed) return
+    if (result.needsOnboarding) throw redirect({ to: '/onboarding' })
+    throw redirect({ to: '/projects/$projectSlug', params: { projectSlug: 'default' } })
+  },
+  component: LoginPage,
+})
+
+const onboardingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/onboarding',
+  beforeLoad: async () => {
+    const result = await checkAuth()
+    if (!result.authed) throw redirect({ to: '/login' })
+    if (!result.needsOnboarding) {
       throw redirect({ to: '/projects/$projectSlug', params: { projectSlug: 'default' } })
     }
   },
-  component: LoginPage,
+  component: OnboardingPage,
 })
 
 const projectRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/projects/$projectSlug',
   beforeLoad: async () => {
-    const authed = await checkAuth()
-    if (!authed) {
-      throw redirect({ to: '/login' })
-    }
+    const result = await checkAuth()
+    if (!result.authed) throw redirect({ to: '/login' })
+    if (result.needsOnboarding) throw redirect({ to: '/onboarding' })
   },
   component: AppLayout,
 })
@@ -89,6 +106,7 @@ const taskDetailRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
+  onboardingRoute,
   projectRoute.addChildren([
     storiesTableRoute,
     settingsRoute,

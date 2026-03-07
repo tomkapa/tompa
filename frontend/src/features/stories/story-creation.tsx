@@ -1,9 +1,11 @@
 import * as React from 'react'
-import { ArrowLeft, RefreshCw, Check, Sparkles, Pencil } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Check, Sparkles, Pencil, X } from 'lucide-react'
+import { MarkdownViewer } from '@/components/ui/markdown-viewer'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { IconButton } from '@/components/ui/icon-button'
 import { InputGroup } from '@/components/ui/input'
-import { TextareaGroup } from '@/components/ui/textarea'
+import { Textarea, TextareaGroup } from '@/components/ui/textarea'
 import { ListboxGroup } from '@/components/ui/listbox'
 import {
   Dialog,
@@ -107,19 +109,18 @@ function InputStep({ formData, owners, isLoading, onChange, onSubmit, onCancel }
           <label className="text-sm font-medium text-foreground leading-[1.4]">Story Type</label>
           <div className="flex gap-3">
             {STORY_TYPE_OPTIONS.map((opt) => (
-              <button
+              <Button
                 key={opt.value}
                 type="button"
+                variant={formData.storyType === opt.value ? 'default' : 'ghost'}
                 onClick={() => onChange({ storyType: opt.value })}
                 className={cn(
-                  'flex-1 rounded-2xl px-4 py-3 text-sm font-medium transition-colors border',
-                  formData.storyType === opt.value
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'bg-accent text-accent-foreground border-border hover:bg-accent/80'
+                  'flex-1 rounded-2xl h-auto py-3',
+                  formData.storyType !== opt.value && 'border border-border',
                 )}
               >
                 {opt.label}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -214,8 +215,8 @@ function ReviewStep({
           </span>
 
           {isEditing ? (
-            <textarea
-              className="w-full min-h-32 bg-transparent text-sm text-foreground leading-[1.5] focus:outline-none resize-none"
+            <Textarea
+              className="min-h-32 bg-transparent border-none rounded-none px-0 py-0 focus-visible:ring-0"
               value={editedDesc}
               onChange={(e) => setEditedDesc(e.target.value)}
               onBlur={() => setIsEditing(false)}
@@ -224,10 +225,10 @@ function ReviewStep({
           ) : (
             <button
               type="button"
-              className="text-left text-sm text-foreground leading-[1.5] whitespace-pre-wrap w-full"
               onClick={() => setIsEditing(true)}
+              className="w-full text-left"
             >
-              {editedDesc}
+              <MarkdownViewer content={editedDesc} />
             </button>
           )}
 
@@ -329,13 +330,14 @@ export function StoryCreation({
           onClick={(e) => e.stopPropagation()}
         >
           <DialogClose asChild>
-            <button
+            <IconButton
               type="button"
-              className="absolute right-6 top-6 rounded-full p-1 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring z-10"
+              variant="ghost"
               aria-label="Close"
+              className="absolute right-6 top-6 h-7 w-7 text-muted-foreground z-10"
             >
-              ✕
-            </button>
+              <X className="h-4 w-4" />
+            </IconButton>
           </DialogClose>
 
           {step === 'input' ? (

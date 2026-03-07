@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // Halo Accordion — Open/Closed, matches Accordion/Open and Accordion/Closed
@@ -94,11 +94,38 @@ function AccordionItem({ value, className, children }: AccordionItemProps) {
 
 interface AccordionTriggerProps extends React.HTMLAttributes<HTMLButtonElement> {
   itemValue?: string
+  /** Put chevron on the left of children; use rightSlot for a badge/counter on the far right */
+  chevronLeft?: boolean
+  rightSlot?: React.ReactNode
 }
 
-function AccordionTrigger({ itemValue = '', className, children, ...props }: AccordionTriggerProps) {
+function AccordionTrigger({ itemValue = '', className, children, chevronLeft, rightSlot, ...props }: AccordionTriggerProps) {
   const { openItems, toggle } = React.useContext(AccordionContext)
   const isOpen = openItems.has(itemValue)
+
+  if (chevronLeft) {
+    return (
+      <button
+        type="button"
+        className={cn(
+          'flex w-full items-center justify-between text-left focus-visible:outline-none',
+          className
+        )}
+        onClick={() => toggle(itemValue)}
+        aria-expanded={isOpen}
+        {...props}
+      >
+        <div className="flex items-center gap-2.5">
+          {isOpen
+            ? <ChevronDown className="h-[18px] w-[18px] shrink-0 text-muted-foreground" />
+            : <ChevronRight className="h-[18px] w-[18px] shrink-0 text-muted-foreground" />
+          }
+          {children}
+        </div>
+        {rightSlot}
+      </button>
+    )
+  }
 
   return (
     <button

@@ -55,11 +55,13 @@ impl Dispatcher {
                 session_id,
                 system_prompt,
                 prompt,
+                model,
             } => {
                 self.send_to_claude(ClaudeCodeMessage::Execute {
                     session_id,
                     system_prompt,
                     prompt,
+                    model,
                 })
                 .await;
             }
@@ -130,6 +132,7 @@ mod tests {
             session_id,
             system_prompt: "you are helpful".into(),
             prompt: "hello".into(),
+            model: "sonnet".into(),
         }))
         .await;
         let msg = claude_rx.try_recv().expect("expected a claude message");
@@ -138,10 +141,12 @@ mod tests {
                 session_id: sid,
                 system_prompt,
                 prompt,
+                model,
             } => {
                 assert_eq!(sid, session_id);
                 assert_eq!(system_prompt, "you are helpful");
                 assert_eq!(prompt, "hello");
+                assert_eq!(model, "sonnet");
             }
         }
     }
@@ -207,6 +212,7 @@ mod tests {
             session_id: Uuid::now_v7(),
             system_prompt: "sys".into(),
             prompt: "hello".into(),
+            model: "sonnet".into(),
         }))
         .await;
         // Should not panic — just logs a warning
@@ -244,6 +250,7 @@ mod tests {
             session_id: Uuid::now_v7(),
             system_prompt: "sys".into(),
             prompt: "hello".into(),
+            model: "sonnet".into(),
         }))
         .await;
         // Should not panic — logs error about disconnected actor
