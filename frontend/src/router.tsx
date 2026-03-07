@@ -91,6 +91,18 @@ const settingsRoute = createRoute({
   component: () => null,
 })
 
+const patternsRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: '/patterns',
+  component: () => null,
+})
+
+const profileRoute = createRoute({
+  getParentRoute: () => projectRoute,
+  path: '/profile',
+  component: () => null,
+})
+
 const storyModalRoute = createRoute({
   getParentRoute: () => projectRoute,
   path: '/stories/$storyId',
@@ -110,6 +122,8 @@ const routeTree = rootRoute.addChildren([
   projectRoute.addChildren([
     storiesTableRoute,
     settingsRoute,
+    patternsRoute,
+    profileRoute,
     storyModalRoute.addChildren([taskDetailRoute]),
   ]),
 ])

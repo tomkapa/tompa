@@ -4,7 +4,7 @@ import { MarkdownViewer } from '@/components/ui/markdown-viewer'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
-import { InputGroup } from '@/components/ui/input'
+import { Input } from '@/components/ui/input'
 import { Textarea, TextareaGroup } from '@/components/ui/textarea'
 import { ListboxGroup } from '@/components/ui/listbox'
 import {
@@ -81,7 +81,7 @@ function InputStep({ formData, owners, isLoading, onChange, onSubmit, onCancel }
 
       {/* Content */}
       <div className="flex flex-col gap-5 px-8 py-6">
-        <InputGroup
+        <Input
           label="Title"
           placeholder="e.g., User authentication flow"
           value={formData.title}

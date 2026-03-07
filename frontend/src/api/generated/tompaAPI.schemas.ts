@@ -4,6 +4,20 @@
  * Tompa API
  * OpenAPI spec version: 1.0.0
  */
+/**
+ * Minimal summary of a decision pattern that was injected into a Q&A prompt.
+Stored inside `QaContent` so provenance is preserved with the round.
+`override_count` is a snapshot at injection time so the Q&A view can
+show an "outdated?" alert without an extra fetch.
+ */
+export interface AppliedPatternSummary {
+  confidence: number;
+  domain: string;
+  id: string;
+  override_count: number;
+  pattern: string;
+}
+
 export interface ApproveRefinedDescriptionRequest {
   /**
    * If provided, overrides the AI-generated refined description.
@@ -11,6 +25,10 @@ If `None`, the pending AI version is used as-is.
    * @nullable
    */
   description?: string | null;
+}
+
+export interface AssignQuestionRequest {
+  member_id: string;
 }
 
 export interface CourseCorrectionRequest {
@@ -83,6 +101,31 @@ export interface CreateTaskRequest {
   task_type: string;
 }
 
+/**
+ * Row from decision_patterns table.
+ */
+export interface DecisionPatternResponse {
+  confidence: number;
+  created_at: string;
+  domain: string;
+  id: string;
+  org_id: string;
+  override_count: number;
+  pattern: string;
+  /** @nullable */
+  project_id?: string | null;
+  rationale: string;
+  /** @nullable */
+  source_round_id?: string | null;
+  /** @nullable */
+  source_story_id?: string | null;
+  /** @nullable */
+  superseded_by?: string | null;
+  tags: string[];
+  updated_at: string;
+  usage_count: number;
+}
+
 export interface DependencyResponse {
   depends_on_task_id: string;
   id: string;
@@ -137,11 +180,48 @@ export interface MeResponse {
   user_id: string;
 }
 
+export interface OrgMemberResponse {
+  /** @nullable */
+  avatar_url?: string | null;
+  display_name: string;
+  role: string;
+  user_id: string;
+}
+
 export interface OrgResponse {
   created_at: string;
   id: string;
   name: string;
   role: string;
+}
+
+export type ProjectProfileContentTechStack = {[key: string]: string};
+
+/**
+ * The structured JSON content of a project profile.
+ */
+export interface ProjectProfileContent {
+  architectural_patterns: string[];
+  conventions: string[];
+  domain_knowledge: string[];
+  identity: string;
+  team_preferences: string[];
+  tech_stack: ProjectProfileContentTechStack;
+}
+
+export interface ProjectProfileResponse {
+  content: ProjectProfileContent;
+  created_at: string;
+  /** @nullable */
+  edited_at?: string | null;
+  /** @nullable */
+  generated_at?: string | null;
+  generated_by: string;
+  id: string;
+  org_id: string;
+  patterns_at_generation: number;
+  project_id: string;
+  updated_at: string;
 }
 
 export interface ProjectResponse {
@@ -150,17 +230,11 @@ export interface ProjectResponse {
   description?: string | null;
   /** @nullable */
   github_repo_url?: string | null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  qa_config: Record<string, any>;
   id: string;
   name: string;
   org_id: string;
+  qa_config: unknown;
   updated_at: string;
-}
-
-export interface UpdateQaConfigRequest {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  qa_config: Record<string, any>;
 }
 
 export interface QaQuestionOption {
@@ -189,25 +263,22 @@ export interface QaQuestion {
   text: string;
 }
 
-export interface AssignQuestionRequest {
-  member_id: string;
-}
-
-export interface OrgMemberResponse {
-  /** @nullable */
-  avatar_url?: string | null;
-  display_name: string;
-  role: string;
-  user_id: string;
-}
-
 export interface QaContent {
+  /** Patterns injected into the LLM prompt that generated this round's questions. */
+  applied_patterns?: AppliedPatternSummary[];
   /** @nullable */
   course_correction?: string | null;
   questions: QaQuestion[];
 }
 
 export interface QaRoundResponse {
+  /**
+   * Number of decision patterns that were injected into this round's prompt.
+   * @minimum 0
+   */
+  applied_pattern_count: number;
+  /** The patterns that were injected (id, domain, pattern text, confidence). */
+  applied_patterns: AppliedPatternSummary[];
   content: QaContent;
   created_at: string;
   id: string;
@@ -274,6 +345,13 @@ export interface SubmitAnswerRequest {
   selected_answer_index?: number | null;
 }
 
+export interface SupersedePatternRequest {
+  pattern: string;
+  rationale: string;
+  /** @nullable */
+  tags?: string[] | null;
+}
+
 export interface TaskResponse {
   /** @nullable */
   ai_status_text?: string | null;
@@ -303,6 +381,23 @@ export interface UpdateKnowledgeRequest {
   title?: string | null;
 }
 
+export interface UpdateOrgRequest {
+  name: string;
+}
+
+export interface UpdatePatternRequest {
+  /** @nullable */
+  pattern?: string | null;
+  /** @nullable */
+  rationale?: string | null;
+  /** @nullable */
+  tags?: string[] | null;
+}
+
+export interface UpdateProfileRequest {
+  content: ProjectProfileContent;
+}
+
 export interface UpdateProjectRequest {
   /** @nullable */
   description?: string | null;
@@ -310,6 +405,10 @@ export interface UpdateProjectRequest {
   github_repo_url?: string | null;
   /** @nullable */
   name?: string | null;
+}
+
+export interface UpdateQaConfigRequest {
+  qa_config: unknown;
 }
 
 export interface UpdateStoryRequest {
@@ -372,6 +471,17 @@ export type ListProjectsParams = {
  * Optional org filter (must match session org)
  */
 org_id?: string;
+};
+
+export type ListPatternsParams = {
+/**
+ * Filter by domain
+ */
+domain?: string;
+/**
+ * Minimum confidence threshold
+ */
+min_confidence?: number;
 };
 
 export type ListRoundsParams = {

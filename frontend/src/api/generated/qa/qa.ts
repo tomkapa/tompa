@@ -24,6 +24,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AssignQuestionRequest,
   CourseCorrectionRequest,
   ListRoundsParams,
   QaRoundResponse,
@@ -473,5 +474,219 @@ export const useRollback = <TError = void,
         TContext
       > => {
       return useMutation(getRollbackMutationOptions(options), queryClient);
+    }
+    /**
+ * @summary PUT /api/v1/qa-rounds/:round_id/questions/:question_id/assignee — assign a question to an org member.
+ */
+export type assignQuestionResponse200 = {
+  data: QaRoundResponse
+  status: 200
+}
+
+export type assignQuestionResponse400 = {
+  data: void
+  status: 400
+}
+
+export type assignQuestionResponse401 = {
+  data: void
+  status: 401
+}
+
+export type assignQuestionResponse404 = {
+  data: void
+  status: 404
+}
+
+export type assignQuestionResponseSuccess = (assignQuestionResponse200) & {
+  headers: Headers;
+};
+export type assignQuestionResponseError = (assignQuestionResponse400 | assignQuestionResponse401 | assignQuestionResponse404) & {
+  headers: Headers;
+};
+
+export type assignQuestionResponse = (assignQuestionResponseSuccess | assignQuestionResponseError)
+
+export const getAssignQuestionUrl = (roundId: string,
+    questionId: string,) => {
+
+
+  
+
+  return `/api/v1/qa-rounds/${roundId}/questions/${questionId}/assignee`
+}
+
+export const assignQuestion = async (roundId: string,
+    questionId: string,
+    assignQuestionRequest: AssignQuestionRequest, options?: RequestInit): Promise<assignQuestionResponse> => {
+  
+  const res = await fetch(getAssignQuestionUrl(roundId,questionId),
+  {      
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      assignQuestionRequest,)
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+  
+  const data: assignQuestionResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as assignQuestionResponse
+}
+  
+
+
+
+export const getAssignQuestionMutationOptions = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof assignQuestion>>, TError,{roundId: string;questionId: string;data: AssignQuestionRequest}, TContext>, fetch?: RequestInit}
+): UseMutationOptions<Awaited<ReturnType<typeof assignQuestion>>, TError,{roundId: string;questionId: string;data: AssignQuestionRequest}, TContext> => {
+
+const mutationKey = ['assignQuestion'];
+const {mutation: mutationOptions, fetch: fetchOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, fetch: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof assignQuestion>>, {roundId: string;questionId: string;data: AssignQuestionRequest}> = (props) => {
+          const {roundId,questionId,data} = props ?? {};
+
+          return  assignQuestion(roundId,questionId,data,fetchOptions)
+        }
+
+
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AssignQuestionMutationResult = NonNullable<Awaited<ReturnType<typeof assignQuestion>>>
+    export type AssignQuestionMutationBody = AssignQuestionRequest
+    export type AssignQuestionMutationError = void
+
+    /**
+ * @summary PUT /api/v1/qa-rounds/:round_id/questions/:question_id/assignee — assign a question to an org member.
+ */
+export const useAssignQuestion = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof assignQuestion>>, TError,{roundId: string;questionId: string;data: AssignQuestionRequest}, TContext>, fetch?: RequestInit}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof assignQuestion>>,
+        TError,
+        {roundId: string;questionId: string;data: AssignQuestionRequest},
+        TContext
+      > => {
+      return useMutation(getAssignQuestionMutationOptions(options), queryClient);
+    }
+    /**
+ * @summary DELETE /api/v1/qa-rounds/:round_id/questions/:question_id/assignee — remove assignment from a question.
+ */
+export type unassignQuestionResponse200 = {
+  data: QaRoundResponse
+  status: 200
+}
+
+export type unassignQuestionResponse400 = {
+  data: void
+  status: 400
+}
+
+export type unassignQuestionResponse401 = {
+  data: void
+  status: 401
+}
+
+export type unassignQuestionResponse404 = {
+  data: void
+  status: 404
+}
+
+export type unassignQuestionResponseSuccess = (unassignQuestionResponse200) & {
+  headers: Headers;
+};
+export type unassignQuestionResponseError = (unassignQuestionResponse400 | unassignQuestionResponse401 | unassignQuestionResponse404) & {
+  headers: Headers;
+};
+
+export type unassignQuestionResponse = (unassignQuestionResponseSuccess | unassignQuestionResponseError)
+
+export const getUnassignQuestionUrl = (roundId: string,
+    questionId: string,) => {
+
+
+  
+
+  return `/api/v1/qa-rounds/${roundId}/questions/${questionId}/assignee`
+}
+
+export const unassignQuestion = async (roundId: string,
+    questionId: string, options?: RequestInit): Promise<unassignQuestionResponse> => {
+  
+  const res = await fetch(getUnassignQuestionUrl(roundId,questionId),
+  {      
+    ...options,
+    method: 'DELETE'
+    
+    
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+  
+  const data: unassignQuestionResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as unassignQuestionResponse
+}
+  
+
+
+
+export const getUnassignQuestionMutationOptions = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof unassignQuestion>>, TError,{roundId: string;questionId: string}, TContext>, fetch?: RequestInit}
+): UseMutationOptions<Awaited<ReturnType<typeof unassignQuestion>>, TError,{roundId: string;questionId: string}, TContext> => {
+
+const mutationKey = ['unassignQuestion'];
+const {mutation: mutationOptions, fetch: fetchOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, fetch: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof unassignQuestion>>, {roundId: string;questionId: string}> = (props) => {
+          const {roundId,questionId} = props ?? {};
+
+          return  unassignQuestion(roundId,questionId,fetchOptions)
+        }
+
+
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UnassignQuestionMutationResult = NonNullable<Awaited<ReturnType<typeof unassignQuestion>>>
+    
+    export type UnassignQuestionMutationError = void
+
+    /**
+ * @summary DELETE /api/v1/qa-rounds/:round_id/questions/:question_id/assignee — remove assignment from a question.
+ */
+export const useUnassignQuestion = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof unassignQuestion>>, TError,{roundId: string;questionId: string}, TContext>, fetch?: RequestInit}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof unassignQuestion>>,
+        TError,
+        {roundId: string;questionId: string},
+        TContext
+      > => {
+      return useMutation(getUnassignQuestionMutationOptions(options), queryClient);
     }
     

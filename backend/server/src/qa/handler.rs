@@ -7,7 +7,8 @@ use axum::{
 use uuid::Uuid;
 
 use crate::{
-    agents, auth::middleware::require_auth, db::OrgTx, errors::ApiError,
+    agents, auth::middleware::require_auth, db::OrgTx,
+    decision_patterns::service as dp_service, errors::ApiError,
     sse::broadcaster::SseEvent, state::AppState,
 };
 
@@ -89,6 +90,19 @@ pub(crate) async fn submit_answer(
 
     if let Some(payload) = result.notify {
         let s = state.clone();
+        let answer_pairs: Vec<(String, String)> = result
+            .response
+            .content
+            .questions
+            .iter()
+            .filter_map(|q| {
+                q.selected_answer_text
+                    .as_ref()
+                    .map(|a| (q.text.clone(), a.clone()))
+            })
+            .collect();
+        let project_id = payload.project_id;
+
         tokio::spawn(async move {
             s.broadcaster.broadcast(
                 org_id,
@@ -98,6 +112,16 @@ pub(crate) async fn submit_answer(
                     round_id: payload.round_id,
                 },
             );
+
+            // Feedback loop: update pattern confidence based on answer alignment
+            dp_service::process_answer_feedback(
+                &s.pool,
+                org_id,
+                project_id,
+                &answer_pairs,
+            )
+            .await;
+
             agents::service::dispatch_next_round(
                 &s,
                 org_id,

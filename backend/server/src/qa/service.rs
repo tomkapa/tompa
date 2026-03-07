@@ -53,6 +53,8 @@ pub struct SubmitAnswerResult {
 fn to_response(row: repo::QaRoundRow) -> Result<QaRoundResponse, ApiError> {
     let content: QaContent = serde_json::from_value(row.content)
         .map_err(|e| ApiError::Internal(anyhow::anyhow!("Failed to parse QA content: {e}")))?;
+    let applied_pattern_count = content.applied_patterns.len();
+    let applied_patterns = content.applied_patterns.clone();
     Ok(QaRoundResponse {
         id: row.id,
         org_id: row.org_id,
@@ -61,6 +63,8 @@ fn to_response(row: repo::QaRoundRow) -> Result<QaRoundResponse, ApiError> {
         stage: row.stage,
         round_number: row.round_number,
         status: row.status,
+        applied_pattern_count,
+        applied_patterns,
         content,
         created_at: row.created_at,
         updated_at: row.updated_at,
@@ -326,6 +330,7 @@ pub async fn course_correct(
     let content = QaContent {
         questions: Vec::new(),
         course_correction: Some(req.text),
+        applied_patterns: Vec::new(),
     };
     let content_value = serde_json::to_value(&content)
         .map_err(|e| ApiError::Internal(anyhow::anyhow!("Failed to serialize QA content: {e}")))?;

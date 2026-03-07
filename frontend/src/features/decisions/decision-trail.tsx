@@ -13,6 +13,12 @@ type DecisionStage =
   | 'task-qa'
   | 'impl'
 
+interface InfluencingPattern {
+  id: string
+  domain: string
+  pattern: string
+}
+
 interface Decision {
   id: string
   domain: string
@@ -22,6 +28,8 @@ interface Decision {
   stage: DecisionStage
   entryUrl?: string
   answeredBy?: string
+  /** Patterns that were injected into the prompt for the round this decision came from. */
+  influencedByPatterns?: InfluencingPattern[]
 }
 
 interface DecisionTrailProps {
@@ -114,6 +122,7 @@ function DecisionTrail({ decisions, level, className }: DecisionTrailProps) {
                     superseded={decision.superseded}
                     entryUrl={decision.entryUrl}
                     answerer={answerer}
+                    influencedByPatterns={decision.influencedByPatterns}
                   />
                 )
               })}

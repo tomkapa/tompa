@@ -8,10 +8,20 @@ use shared::{
 use crate::{
     container_keys::types::ContainerKeyInfo,
     db::{OrgTx, new_id},
+    decision_patterns::{
+        repo as dp_repo,
+        service as dp_service,
+        types::{DecisionPatternResponse, ExtractedPattern},
+    },
     errors::ApiError,
+    project_profiles::{
+        repo as pp_repo,
+        service as pp_service,
+        types::ProjectProfileContent,
+    },
     qa::{
         repo as qa_repo,
-        types::{QaContent, QaQuestion},
+        types::{AppliedPatternSummary, QaContent, QaQuestion},
     },
     sse::broadcaster::SseEvent,
     state::AppState,
@@ -20,6 +30,161 @@ use crate::{
 };
 
 use super::{prompts, registry::ConnectionRegistry, session_repo};
+
+// ── Prompt context (knowledge + profile + patterns) ──────────────────────────
+
+/// Combined context for prompt construction.
+pub struct PromptContext {
+    pub knowledge: Vec<KnowledgeEntry>,
+    pub profile: Option<ProjectProfileContent>,
+    pub patterns: Vec<DecisionPatternResponse>,
+}
+
+/// Fetch all three layers of project intelligence for prompt construction.
+async fn fetch_prompt_context(
+    pool: &sqlx::PgPool,
+    org_id: Uuid,
+    project_id: Uuid,
+    story_description: &str,
+) -> Result<PromptContext, ApiError> {
+    let knowledge = fetch_knowledge(pool, org_id, project_id).await?;
+    let profile = pp_service::fetch_project_profile(pool, org_id, project_id).await?;
+
+    // Extract simple keyword tags from the story description for FTS
+    let tags: Vec<String> = extract_search_tags(story_description);
+    let pattern_rows = dp_repo::fetch_relevant_patterns(pool, org_id, project_id, story_description, &tags).await?;
+    let patterns = pattern_rows
+        .into_iter()
+        .map(|r| DecisionPatternResponse {
+            id: r.id,
+            org_id: r.org_id,
+            project_id: r.project_id,
+            domain: r.domain,
+            pattern: r.pattern,
+            rationale: r.rationale,
+            tags: r.tags,
+            confidence: r.confidence,
+            usage_count: r.usage_count,
+            override_count: r.override_count,
+            source_story_id: r.source_story_id,
+            source_round_id: r.source_round_id,
+            superseded_by: r.superseded_by,
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+        })
+        .collect();
+
+    Ok(PromptContext { knowledge, profile, patterns })
+}
+
+/// Extract simple keyword tags from text for FTS tag matching.
+fn extract_search_tags(text: &str) -> Vec<String> {
+    // Extract domain-relevant keywords as tags
+    let domain_keywords = [
+        "api", "database", "auth", "ui", "ux", "security", "performance",
+        "testing", "deployment", "cache", "queue", "async", "sync",
+        "rest", "graphql", "websocket", "sse", "pagination", "search",
+    ];
+    text.split_whitespace()
+        .filter_map(|w| {
+            let lower = w.to_lowercase();
+            let clean = lower.trim_matches(|c: char| !c.is_alphanumeric());
+            if domain_keywords.contains(&clean) {
+                Some(clean.to_string())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Format a project profile for injection into prompts.
+fn fmt_profile(profile: &ProjectProfileContent) -> String {
+    let mut sections = Vec::new();
+
+    sections.push(format!("**Identity:** {}", profile.identity));
+
+    if !profile.tech_stack.is_empty() {
+        let stack: Vec<String> = profile
+            .tech_stack
+            .iter()
+            .map(|(k, v)| format!("- {k}: {v}"))
+            .collect();
+        sections.push(format!("**Tech Stack:**\n{}", stack.join("\n")));
+    }
+
+    if !profile.architectural_patterns.is_empty() {
+        let pats: Vec<String> = profile
+            .architectural_patterns
+            .iter()
+            .map(|p| format!("- {p}"))
+            .collect();
+        sections.push(format!("**Architectural Patterns:**\n{}", pats.join("\n")));
+    }
+
+    if !profile.conventions.is_empty() {
+        let convs: Vec<String> = profile.conventions.iter().map(|c| format!("- {c}")).collect();
+        sections.push(format!("**Conventions:**\n{}", convs.join("\n")));
+    }
+
+    if !profile.team_preferences.is_empty() {
+        let prefs: Vec<String> = profile
+            .team_preferences
+            .iter()
+            .map(|p| format!("- {p}"))
+            .collect();
+        sections.push(format!("**Team Preferences:**\n{}", prefs.join("\n")));
+    }
+
+    sections.join("\n\n")
+}
+
+/// Format decision patterns for injection into prompts.
+fn fmt_patterns(patterns: &[DecisionPatternResponse]) -> String {
+    if patterns.is_empty() {
+        return String::new();
+    }
+    patterns
+        .iter()
+        .enumerate()
+        .map(|(i, p)| {
+            format!(
+                "{}. [{}] {} (confidence: {:.0}%)",
+                i + 1,
+                p.domain,
+                p.pattern,
+                p.confidence * 100.0
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Build the prompt sections for profile and patterns context.
+fn build_context_sections(ctx: &PromptContext) -> String {
+    let mut sections = String::new();
+
+    if let Some(ref profile) = ctx.profile {
+        sections.push_str("\n\n## Project Profile\nThis project's established identity and conventions:\n\n");
+        sections.push_str(&fmt_profile(profile));
+        sections.push_str("\n\nTreat these as established context. Do not re-ask decisions that align with the profile unless the story explicitly conflicts.");
+    }
+
+    let patterns_text = fmt_patterns(&ctx.patterns);
+    if !patterns_text.is_empty() {
+        sections.push_str("\n\n## Established Project Patterns\nThese patterns were established by prior decisions in this project.\nUse them as defaults unless the story requirements clearly conflict.\nIf a pattern covers a question you'd normally ask, skip it or propose it as the recommended default instead of asking.\n\n");
+        sections.push_str(&patterns_text);
+    }
+
+    // Add pattern extraction instruction to the JSON output format.
+    sections.push_str(r#"
+
+Additionally, extract 0-3 reusable decision patterns from this round's context — abstract principles that would apply to future stories with similar concerns. Include them in your JSON response as:
+"patterns": [{"domain": "development|security|design|business|marketing", "pattern": "One-sentence reusable rule", "rationale": "Why this was decided", "tags": ["tag1", "tag2"]}]
+If no patterns are worth extracting, return "patterns": []."#);
+
+    sections
+}
 
 // ── Incoming message dispatch ─────────────────────────────────────────────────
 
@@ -73,6 +238,7 @@ async fn on_execution_result(
         "decomposition" => on_decomposition_result(state, key_info, &session, output).await,
         "task_qa" => on_task_qa_result(state, key_info, &session, output).await,
         "implementation" => on_implementation_result(state, key_info, &session, output).await,
+        "profile_synthesis" => on_profile_synthesis_result(state, key_info, &session, output).await,
         other => {
             tracing::warn!(session_id = %session.session_id, stage = %other, "unknown session stage");
             Ok(())
@@ -128,11 +294,14 @@ async fn on_qa_result(
             ApiError::Internal(anyhow::anyhow!("failed to parse round content: {e}"))
         })?;
 
+        let extracted_patterns: Vec<ExtractedPattern>;
+
         if pos_in_enabled == 0 {
             // First enabled role: simple `{"questions":[...]}` format.
             let round_output: QaRoundOutput = serde_json::from_value(output).map_err(|e| {
                 ApiError::Internal(anyhow::anyhow!("failed to parse QA output: {e}"))
             })?;
+            extracted_patterns = round_output.patterns.into_iter().map(Into::into).collect();
             let new_questions = output_to_qa_questions(round_output.questions);
             content.questions.extend(new_questions);
         } else {
@@ -142,10 +311,23 @@ async fn on_qa_result(
                     ApiError::Internal(anyhow::anyhow!("failed to parse sequential QA output: {e}"))
                 })?;
 
+            extracted_patterns = seq_output.patterns.into_iter().map(Into::into).collect();
             apply_augmentations(&mut content.questions, seq_output.augmentations);
             content
                 .questions
                 .extend(output_to_qa_questions(seq_output.questions));
+        }
+
+        // Process extracted patterns (piggybacked distillation — zero extra LLM calls).
+        if !extracted_patterns.is_empty() {
+            tracing::info!(
+                %org_id, %story_id, count = extracted_patterns.len(),
+                "processing extracted patterns from grooming round"
+            );
+            dp_service::process_extracted_patterns(
+                &state.pool, org_id, session.project_id, story_id,
+                Some(qa_round_id), extracted_patterns,
+            ).await;
         }
 
         // Persist the updated content.
@@ -201,6 +383,21 @@ async fn on_qa_result(
         // ── Single-role path (planning, etc.) ─────────────────────────────────
         let round_output: QaRoundOutput = serde_json::from_value(output)
             .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to parse QA output: {e}")))?;
+
+        // Process extracted patterns from planning output.
+        let extracted_patterns: Vec<ExtractedPattern> =
+            round_output.patterns.into_iter().map(Into::into).collect();
+        if !extracted_patterns.is_empty() {
+            tracing::info!(
+                %org_id, %story_id, stage, count = extracted_patterns.len(),
+                "processing extracted patterns from planning round"
+            );
+            dp_service::process_extracted_patterns(
+                &state.pool, org_id, session.project_id, story_id,
+                None, extracted_patterns,
+            ).await;
+        }
+
         let questions = output_to_qa_questions(round_output.questions);
 
         if questions.is_empty() {
@@ -218,6 +415,7 @@ async fn on_qa_result(
             let content_value = serde_json::to_value(&QaContent {
                 questions,
                 course_correction: None,
+                applied_patterns: Vec::new(),
             })
             .map_err(|e| {
                 ApiError::Internal(anyhow::anyhow!("failed to serialise QA content: {e}"))
@@ -374,6 +572,20 @@ async fn on_task_qa_result(
     let round: QaRoundOutput = serde_json::from_value(output)
         .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to parse task QA output: {e}")))?;
 
+    // Process extracted patterns from task QA.
+    let extracted_patterns: Vec<ExtractedPattern> =
+        round.patterns.into_iter().map(Into::into).collect();
+    if !extracted_patterns.is_empty() {
+        tracing::info!(
+            %org_id, %story_id, %task_id, count = extracted_patterns.len(),
+            "processing extracted patterns from task QA round"
+        );
+        dp_service::process_extracted_patterns(
+            &state.pool, org_id, session.project_id, story_id,
+            None, extracted_patterns,
+        ).await;
+    }
+
     if round.questions.is_empty() {
         // No questions needed → skip directly to implementation.
         dispatch_implementation(state, org_id, session.project_id, story_id, task_id).await;
@@ -430,6 +642,7 @@ async fn on_task_qa_result(
     let content_value = serde_json::to_value(&QaContent {
         questions,
         course_correction: None,
+        applied_patterns: Vec::new(),
     })
     .map_err(|e| ApiError::Internal(anyhow::anyhow!("failed to serialise QA content: {e}")))?;
 
@@ -484,6 +697,52 @@ async fn on_implementation_result(
         tracing::warn!(task_id = %task_id, "implementation result has neither commit_sha nor error");
         Ok(())
     }
+}
+
+/// Handle profile synthesis result: parse JSON profile content and UPSERT to DB.
+async fn on_profile_synthesis_result(
+    state: &AppState,
+    key_info: &ContainerKeyInfo,
+    session: &session_repo::AgentSession,
+    output: serde_json::Value,
+) -> Result<(), ApiError> {
+    let org_id = key_info.org_id;
+    let project_id = session.project_id;
+
+    tracing::info!(%org_id, %project_id, "profile synthesis result received");
+
+    let output = normalize_json_output(output).map_err(|e| {
+        ApiError::Internal(anyhow::anyhow!("failed to normalise profile synthesis output: {e}"))
+    })?;
+
+    // Validate the output parses as ProjectProfileContent
+    let _profile: ProjectProfileContent = serde_json::from_value(output.clone()).map_err(|e| {
+        tracing::error!(%org_id, %project_id, %e, "failed to parse profile synthesis output as ProjectProfileContent");
+        ApiError::Internal(anyhow::anyhow!("failed to parse profile synthesis output: {e}"))
+    })?;
+
+    // Count current patterns for the snapshot
+    let (_, total_count) = dp_repo::count_patterns_for_threshold(&state.pool, org_id, project_id)
+        .await
+        .unwrap_or((0, 0));
+
+    pp_repo::upsert_profile(
+        &state.pool,
+        org_id,
+        project_id,
+        &output,
+        total_count as i32,
+        "auto",
+    )
+    .await?;
+
+    tracing::info!(
+        %org_id, %project_id,
+        patterns_at_generation = total_count,
+        "project profile synthesized and stored"
+    );
+
+    Ok(())
 }
 
 async fn on_execution_failed(
@@ -584,6 +843,16 @@ async fn on_task_completed(
                 fields: vec!["pipeline_stage".into()],
             },
         );
+
+        // Check if profile regeneration should be triggered.
+        let project_id = match fetch_story_project_id(&state.pool, org_id, story_id).await {
+            Ok(pid) => pid,
+            Err(e) => {
+                tracing::error!(%story_id, %org_id, %e, "failed to fetch project_id for profile threshold check");
+                return Ok(());
+            }
+        };
+        maybe_trigger_profile_synthesis(state, org_id, project_id).await;
     }
 
     Ok(())
@@ -660,13 +929,16 @@ pub async fn dispatch_grooming(
         }
     };
 
-    let knowledge = match fetch_knowledge(&state.pool, org_id, project_id).await {
+    let ctx = match fetch_prompt_context(&state.pool, org_id, project_id, description).await {
         Ok(v) => v,
         Err(e) => {
-            tracing::error!(%story_id, %project_id, %e, "failed to fetch knowledge for grooming");
+            tracing::error!(%story_id, %project_id, %e, "failed to fetch prompt context for grooming");
             return;
         }
     };
+
+    // Record which patterns were injected so the Q&A UI can display provenance.
+    set_round_applied_patterns(&state.pool, org_id, round_id, &ctx.patterns).await;
 
     // Only dispatch role 0 (business analyst); subsequent roles are chained in on_qa_result.
     let enabled_roles = parse_enabled_grooming_roles(&qa_config);
@@ -681,15 +953,16 @@ pub async fn dispatch_grooming(
     let detail_text = prompts::detail_levels::detail_level_threshold(detail_level);
     let model = prompts::models::resolve_model_id(&model_short);
 
-    let (system_prompt, prompt) = prompts::grooming::build_grooming_prompt(
+    let (system_prompt, base_prompt) = prompts::grooming::build_grooming_prompt(
         role,
         description,
-        &knowledge,
+        &ctx.knowledge,
         "",
         &[],
         detail_text,
         max_questions,
     );
+    let prompt = format!("{base_prompt}{}", build_context_sections(&ctx));
 
     match session_repo::create_session(
         &state.pool,
@@ -735,14 +1008,6 @@ pub async fn dispatch_planning(state: &AppState, org_id: Uuid, project_id: Uuid,
     let detail_text = prompts::detail_levels::detail_level_threshold(detail_level);
     let model = prompts::models::resolve_model_id(&model_short);
 
-    let knowledge = match fetch_knowledge(&state.pool, org_id, project_id).await {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::error!(%story_id, %project_id, %e, "failed to fetch knowledge for planning");
-            return;
-        }
-    };
-
     let (story_title, description) = match fetch_story_description(&state.pool, org_id, story_id).await {
         Ok(v) => v,
         Err(e) => {
@@ -751,6 +1016,14 @@ pub async fn dispatch_planning(state: &AppState, org_id: Uuid, project_id: Uuid,
         }
     };
     let story_context = fmt_story_context(&story_title, &description);
+
+    let ctx = match fetch_prompt_context(&state.pool, org_id, project_id, &story_context).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(%story_id, %project_id, %e, "failed to fetch prompt context for planning");
+            return;
+        }
+    };
 
     let grooming_decisions = match fetch_stage_decisions(&state.pool, org_id, story_id, "grooming").await {
         Ok(v) => v,
@@ -768,15 +1041,16 @@ pub async fn dispatch_planning(state: &AppState, org_id: Uuid, project_id: Uuid,
         }
     };
 
-    let (system_prompt, prompt) = prompts::planning::build_planning_prompt(
+    let (system_prompt, base_prompt) = prompts::planning::build_planning_prompt(
         &story_context,
-        &knowledge,
+        &ctx.knowledge,
         "",
         &grooming_decisions,
         &planning_decisions,
         detail_text,
         max_questions,
     );
+    let prompt = format!("{base_prompt}{}", build_context_sections(&ctx));
 
     match session_repo::create_session(
         &state.pool,
@@ -980,10 +1254,18 @@ pub async fn dispatch_implementation(
     let (model_short, _, _) = stage_config(&qa_config, "implementation");
     let model = prompts::models::resolve_model_id(&model_short);
 
-    let knowledge = match fetch_knowledge(&state.pool, org_id, project_id).await {
+    let task_description = match fetch_task_description(&state.pool, org_id, task_id).await {
         Ok(v) => v,
         Err(e) => {
-            tracing::error!(%task_id, %story_id, %project_id, %e, "failed to fetch knowledge for implementation");
+            tracing::error!(%task_id, %story_id, %project_id, %e, "failed to fetch task description for implementation");
+            return;
+        }
+    };
+
+    let ctx = match fetch_prompt_context(&state.pool, org_id, project_id, &task_description).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(%task_id, %story_id, %project_id, %e, "failed to fetch prompt context for implementation");
             return;
         }
     };
@@ -996,20 +1278,13 @@ pub async fn dispatch_implementation(
         }
     };
 
-    let task_description = match fetch_task_description(&state.pool, org_id, task_id).await {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::error!(%task_id, %story_id, %project_id, %e, "failed to fetch task description for implementation");
-            return;
-        }
-    };
-
-    let (system_prompt, prompt) = prompts::implementation::build_implementation_prompt(
+    let (system_prompt, base_prompt) = prompts::implementation::build_implementation_prompt(
         &task_description,
-        &knowledge,
+        &ctx.knowledge,
         &story_decisions,
         &[], // sibling decisions not tracked yet
     );
+    let prompt = format!("{base_prompt}{}", build_context_sections(&ctx));
 
     match session_repo::create_session(
         &state.pool,
@@ -1072,13 +1347,16 @@ async fn dispatch_next_grooming_round(
     };
     let story_context = fmt_story_context(&story_title, &description);
 
-    let knowledge = match fetch_knowledge(&state.pool, org_id, project_id).await {
+    let ctx = match fetch_prompt_context(&state.pool, org_id, project_id, &story_context).await {
         Ok(v) => v,
         Err(e) => {
-            tracing::error!(%story_id, %project_id, %e, "failed to fetch knowledge for next grooming round");
+            tracing::error!(%story_id, %project_id, %e, "failed to fetch prompt context for next grooming round");
             return;
         }
     };
+
+    // Record which patterns were injected so the Q&A UI can display provenance.
+    set_round_applied_patterns(&state.pool, org_id, round_id, &ctx.patterns).await;
 
     let decisions = match fetch_stage_decisions(&state.pool, org_id, story_id, "grooming").await {
         Ok(v) => v,
@@ -1101,15 +1379,16 @@ async fn dispatch_next_grooming_round(
     let detail_text = prompts::detail_levels::detail_level_threshold(detail_level);
     let model = prompts::models::resolve_model_id(&model_short);
 
-    let (system_prompt, prompt) = prompts::grooming::build_grooming_prompt(
+    let (system_prompt, base_prompt) = prompts::grooming::build_grooming_prompt(
         role,
         &story_context,
-        &knowledge,
+        &ctx.knowledge,
         "",
         &decisions,
         detail_text,
         max_questions,
     );
+    let prompt = format!("{base_prompt}{}", build_context_sections(&ctx));
 
     match session_repo::create_session(
         &state.pool,
@@ -1413,10 +1692,10 @@ async fn dispatch_next_grooming_role(
     };
     let story_context = fmt_story_context(&story_title, &description);
 
-    let knowledge = match fetch_knowledge(&state.pool, org_id, project_id).await {
+    let ctx = match fetch_prompt_context(&state.pool, org_id, project_id, &story_context).await {
         Ok(v) => v,
         Err(e) => {
-            tracing::error!(%story_id, role = role.id, %e, "failed to fetch knowledge for sequential grooming role");
+            tracing::error!(%story_id, role = role.id, %e, "failed to fetch prompt context for sequential grooming role");
             return;
         }
     };
@@ -1445,16 +1724,17 @@ async fn dispatch_next_grooming_role(
         })
         .collect();
 
-    let (system_prompt, prompt) = prompts::grooming::build_sequential_grooming_prompt(
+    let (system_prompt, base_prompt) = prompts::grooming::build_sequential_grooming_prompt(
         role,
         &story_context,
-        &knowledge,
+        &ctx.knowledge,
         "",
         &decisions,
         &acc,
         detail_text,
         max_questions,
     );
+    let prompt = format!("{base_prompt}{}", build_context_sections(&ctx));
 
     match session_repo::create_session(
         &state.pool,
@@ -1530,6 +1810,210 @@ async fn fetch_story_description(
     Ok((row.0, row.1))
 }
 
+/// Fetch the project_id for a story (pool-level, no RLS).
+async fn fetch_story_project_id(
+    pool: &sqlx::PgPool,
+    org_id: Uuid,
+    story_id: Uuid,
+) -> Result<Uuid, ApiError> {
+    let row: (Uuid,) = sqlx::query_as(
+        "SELECT project_id FROM stories WHERE id = $1 AND org_id = $2 AND deleted_at IS NULL",
+    )
+    .bind(story_id)
+    .bind(org_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(row.0)
+}
+
+/// Check threshold and dispatch profile synthesis if needed.
+async fn maybe_trigger_profile_synthesis(
+    state: &AppState,
+    org_id: Uuid,
+    project_id: Uuid,
+) {
+    let (new_count, total_count) = match dp_repo::count_patterns_for_threshold(
+        &state.pool, org_id, project_id,
+    ).await {
+        Ok(counts) => counts,
+        Err(e) => {
+            tracing::error!(%org_id, %project_id, %e, "failed to count patterns for threshold");
+            return;
+        }
+    };
+
+    if total_count == 0 {
+        return; // No patterns to synthesize
+    }
+
+    let profile_exists = match pp_repo::get_profile_by_project(&state.pool, org_id, project_id).await {
+        Ok(p) => p.is_some(),
+        Err(e) => {
+            tracing::error!(%org_id, %project_id, %e, "failed to check profile existence");
+            return;
+        }
+    };
+
+    let ratio = new_count as f64 / total_count as f64;
+    let should_generate =
+        ratio >= 0.30 || (total_count >= 3 && !profile_exists);
+
+    if !should_generate {
+        tracing::debug!(
+            %org_id, %project_id, new_count, total_count, ratio,
+            "profile generation threshold not met"
+        );
+        return;
+    }
+
+    tracing::info!(
+        %org_id, %project_id, new_count, total_count, ratio,
+        "profile generation threshold met — dispatching synthesis"
+    );
+
+    dispatch_profile_synthesis(state, org_id, project_id, total_count as i32).await;
+}
+
+/// Dispatch profile synthesis via the container agent.
+pub async fn dispatch_profile_synthesis(
+    state: &AppState,
+    org_id: Uuid,
+    project_id: Uuid,
+    total_patterns: i32,
+) {
+    tracing::info!(%org_id, %project_id, total_patterns, "dispatching profile synthesis");
+
+    // Fetch all active patterns for the project
+    let patterns = match sqlx::query_as::<_, dp_repo::DecisionPatternRow>(
+        r#"
+        SELECT id, org_id, project_id, domain, pattern, rationale, tags, confidence,
+               usage_count, override_count, source_story_id, source_round_id,
+               superseded_by, created_at, updated_at
+        FROM decision_patterns
+        WHERE org_id = $1 AND project_id = $2
+          AND superseded_by IS NULL AND deleted_at IS NULL
+        ORDER BY confidence DESC
+        "#,
+    )
+    .bind(org_id)
+    .bind(project_id)
+    .fetch_all(&state.pool)
+    .await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(%org_id, %project_id, %e, "failed to fetch patterns for synthesis");
+            return;
+        }
+    };
+
+    let patterns_json: Vec<serde_json::Value> = patterns
+        .iter()
+        .map(|p| {
+            serde_json::json!({
+                "domain": p.domain,
+                "pattern": p.pattern,
+                "rationale": p.rationale,
+                "tags": p.tags,
+                "confidence": p.confidence,
+            })
+        })
+        .collect();
+
+    let knowledge = match fetch_knowledge(&state.pool, org_id, project_id).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(%org_id, %project_id, %e, "failed to fetch knowledge for synthesis");
+            return;
+        }
+    };
+
+    let knowledge_text: String = knowledge
+        .iter()
+        .map(|k| format!("- [{:?}] {}: {}", k.category, k.title, k.content))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let current_profile = match pp_service::fetch_project_profile(&state.pool, org_id, project_id).await {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::error!(%org_id, %project_id, %e, "failed to fetch current profile for synthesis");
+            None
+        }
+    };
+
+    let current_profile_text = match &current_profile {
+        Some(p) => serde_json::to_string_pretty(p).unwrap_or_else(|_| "null".to_string()),
+        None => "null".to_string(),
+    };
+
+    let system_prompt = "You are synthesizing a project intelligence profile from decision patterns \
+and knowledge entries. This profile will be injected into future AI prompts \
+to provide holistic project context.".to_string();
+
+    let prompt = format!(
+        r#"## Decision Patterns (from past Q&A)
+{patterns_json}
+
+## Knowledge Entries (documented conventions)
+{knowledge}
+
+## Current Profile (if any — update, don't start from scratch)
+{current_profile}
+
+Synthesize the above into a structured project profile. Merge overlapping
+information. Resolve contradictions by favoring higher-confidence patterns
+and more recent entries.
+
+Respond ONLY with valid JSON matching this schema:
+{{
+  "identity": "One sentence describing what this project is",
+  "tech_stack": {{ "layer": "technologies" }},
+  "architectural_patterns": ["pattern 1", "pattern 2"],
+  "conventions": ["convention 1", "convention 2"],
+  "team_preferences": ["preference 1", "preference 2"],
+  "domain_knowledge": ["insight 1", "insight 2"]
+}}
+
+Rules:
+- Each array item should be one concise sentence
+- Deduplicate — no two items should say the same thing differently
+- tech_stack keys should be logical layers (backend, frontend, database, etc.)
+- If the current profile exists, preserve user edits where they don't
+  conflict with newer patterns"#,
+        patterns_json = serde_json::to_string_pretty(&patterns_json).unwrap_or_default(),
+        knowledge = knowledge_text,
+        current_profile = current_profile_text,
+    );
+
+    let model = prompts::models::resolve_model_id("sonnet");
+
+    match session_repo::create_session(
+        &state.pool,
+        org_id,
+        project_id,
+        None,
+        None,
+        "profile_synthesis",
+        None,
+        None,
+    )
+    .await
+    {
+        Ok(session_id) => {
+            send_execute(
+                state,
+                project_id,
+                session_id,
+                &system_prompt,
+                &prompt,
+                model,
+            )
+            .await;
+        }
+        Err(e) => tracing::error!(%org_id, %project_id, %e, "failed to create profile synthesis session"),
+    }
+}
+
 /// Build a combined story context string for use in prompts.
 /// Always includes the title; appends description if non-empty.
 fn fmt_story_context(title: &str, description: &str) -> String {
@@ -1581,6 +2065,74 @@ async fn fetch_task_description(
     .fetch_one(pool)
     .await?;
     Ok(row.0)
+}
+
+/// Record which decision patterns were injected into a Q&A round's prompt.
+/// Called after `fetch_prompt_context` resolves, so the patterns are known.
+/// Fails silently with a warning — this is best-effort provenance metadata.
+async fn set_round_applied_patterns(
+    pool: &sqlx::PgPool,
+    org_id: Uuid,
+    round_id: Uuid,
+    patterns: &[DecisionPatternResponse],
+) {
+    if patterns.is_empty() {
+        return;
+    }
+    let summaries: Vec<AppliedPatternSummary> = patterns
+        .iter()
+        .map(|p| AppliedPatternSummary {
+            id: p.id,
+            domain: p.domain.clone(),
+            pattern: p.pattern.clone(),
+            confidence: p.confidence,
+            override_count: p.override_count,
+        })
+        .collect();
+
+    let mut tx = match OrgTx::begin(pool, org_id).await {
+        Ok(tx) => tx,
+        Err(e) => {
+            tracing::warn!(%round_id, %e, "failed to begin tx for applied_patterns update");
+            return;
+        }
+    };
+    let row = match qa_repo::get_round(&mut tx, round_id, org_id).await {
+        Ok(Some(row)) => row,
+        Ok(None) => {
+            tracing::warn!(%round_id, "round not found when recording applied patterns");
+            let _ = tx.commit().await;
+            return;
+        }
+        Err(e) => {
+            tracing::warn!(%round_id, %e, "failed to fetch round for applied_patterns update");
+            return;
+        }
+    };
+    let mut content: QaContent = match serde_json::from_value(row.content) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(%round_id, %e, "failed to parse round content for applied_patterns update");
+            return;
+        }
+    };
+    content.applied_patterns = summaries;
+    let content_json = match serde_json::to_value(&content) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(%round_id, %e, "failed to serialize content for applied_patterns update");
+            return;
+        }
+    };
+    if let Err(e) = qa_repo::update_round_content(&mut tx, round_id, org_id, &content_json).await {
+        tracing::warn!(%round_id, %e, "failed to write applied_patterns to round");
+        return;
+    }
+    if let Err(e) = tx.commit().await {
+        tracing::warn!(%round_id, %e, "failed to commit applied_patterns update");
+    } else {
+        tracing::info!(%round_id, count = patterns.len(), "recorded applied patterns for Q&A round");
+    }
 }
 
 /// Pre-create an empty shared grooming round that all parallel roles will
@@ -1651,6 +2203,30 @@ fn normalize_json_output(output: serde_json::Value) -> Result<serde_json::Value,
 #[derive(serde::Deserialize)]
 struct QaRoundOutput {
     questions: Vec<QaQuestionOutput>,
+    /// Patterns piggybacked on the QA output (0-3 per round).
+    #[serde(default)]
+    patterns: Vec<ExtractedPatternOutput>,
+}
+
+/// Pattern extracted from LLM output, piggybacked on QA round.
+#[derive(serde::Deserialize)]
+struct ExtractedPatternOutput {
+    domain: String,
+    pattern: String,
+    rationale: String,
+    #[serde(default)]
+    tags: Vec<String>,
+}
+
+impl From<ExtractedPatternOutput> for ExtractedPattern {
+    fn from(p: ExtractedPatternOutput) -> Self {
+        ExtractedPattern {
+            domain: p.domain,
+            pattern: p.pattern,
+            rationale: p.rationale,
+            tags: p.tags,
+        }
+    }
 }
 
 /// Output format for roles 1-N in the sequential grooming chain.
@@ -1660,6 +2236,8 @@ struct SequentialQaRoundOutput {
     augmentations: Vec<QaAugmentationOutput>,
     #[serde(default)]
     questions: Vec<QaQuestionOutput>,
+    #[serde(default)]
+    patterns: Vec<ExtractedPatternOutput>,
 }
 
 #[derive(serde::Deserialize)]

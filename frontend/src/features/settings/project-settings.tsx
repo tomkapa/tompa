@@ -5,7 +5,7 @@ import { Copy, Check, RefreshCw, Key, Terminal, Lock, Briefcase, Code, Palette, 
 import type { LucideIcon } from 'lucide-react'
 import { TabSwitcher } from '@/components/ui/tab-switcher'
 import { Button } from '@/components/ui/button'
-import { Input, InputGroup } from '@/components/ui/input'
+import { Input } from '@/components/ui/input'
 import { TextareaGroup } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
@@ -237,7 +237,7 @@ function ProjectProfileTab({
   return (
     <div className="rounded-2xl border border-border bg-card p-6">
       <div className="flex flex-col gap-5 max-w-lg">
-        <InputGroup
+        <Input
           label="Project name"
           value={name}
           onChange={(e) => setName(e.target.value)}

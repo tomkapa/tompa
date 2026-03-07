@@ -11,12 +11,12 @@ import {
   CardDescription,
   CardContent,
   CardFooter,
-  InputGroup,
-  SelectGroup,
+  Input,
   TextareaGroup,
   Progress,
   RadioGroup,
   RadioItem,
+  SelectGroup,
 } from '@/components/ui'
 
 const FEATURES_ORG = [
@@ -293,13 +293,13 @@ function Step2Content({ orgName, onOrgNameChange, slug, teamSize, onTeamSizeChan
       </CardHeader>
 
       <CardContent className="px-8 pb-0 gap-4">
-        <InputGroup
+        <Input
           label="Organization name"
           value={orgName}
           onChange={(e) => onOrgNameChange(e.target.value)}
           placeholder="e.g. Acme Inc."
         />
-        <InputGroup
+        <Input
           label="URL slug"
           value={slug}
           readOnly
@@ -340,7 +340,7 @@ function Step3Content({ projectName, onProjectNameChange, description, onDescrip
       </CardHeader>
 
       <CardContent className="px-8 pb-0 gap-4">
-        <InputGroup
+        <Input
           label="Project name"
           value={projectName}
           onChange={(e) => onProjectNameChange(e.target.value)}

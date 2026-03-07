@@ -13,7 +13,7 @@ import { TaskOverview } from '@/features/tasks/task-overview'
 import { QaThread } from '@/features/qa/qa-thread'
 import { DecisionTrail } from '@/features/decisions/decision-trail'
 import type { Decision, DecisionStage } from '@/features/decisions/decision-trail'
-import type { QaRound } from '@/features/qa/types'
+import type { AppliedPattern, QaRound } from '@/features/qa/types'
 import { useGetStory, useApproveDescription, useUpdateStory, getGetStoryQueryKey } from '@/api/generated/stories/stories'
 import { useGetTask, useMarkDone, getGetTaskQueryKey } from '@/api/generated/tasks/tasks'
 import {
@@ -49,10 +49,19 @@ function toDecisionStage(stage: string): DecisionStage {
 }
 
 function mapApiRound(r: QaRoundResponse): QaRound {
+  const appliedPatterns: AppliedPattern[] = (r.applied_patterns ?? []).map((p) => ({
+    id: p.id,
+    domain: p.domain,
+    pattern: p.pattern,
+    confidence: p.confidence,
+    override_count: p.override_count,
+  }))
   return {
     id: r.id,
     roundNumber: r.round_number,
     status: r.status === 'active' ? 'active' : 'superseded',
+    appliedPatternCount: r.applied_pattern_count,
+    appliedPatterns,
     questions: r.content.questions.map((q: ApiQaQuestion) => {
       const raw = q as unknown as Record<string, unknown>
       return {
@@ -77,6 +86,12 @@ function mapApiRound(r: QaRoundResponse): QaRound {
 function roundsToDecisions(rounds: QaRoundResponse[]): Decision[] {
   const decisions: Decision[] = []
   for (const round of rounds) {
+    // Carry the round's applied patterns to every decision made in that round.
+    const influencedByPatterns = (round.applied_patterns ?? []).map((p) => ({
+      id: p.id,
+      domain: p.domain,
+      pattern: p.pattern,
+    }))
     for (const q of round.content.questions) {
       if (q.selected_answer_index != null || q.selected_answer_text) {
         const selectedOpt = q.options[q.selected_answer_index ?? 0] as unknown
@@ -92,6 +107,7 @@ function roundsToDecisions(rounds: QaRoundResponse[]): Decision[] {
           superseded: false,
           stage: toDecisionStage(round.stage),
           answeredBy: (q as unknown as Record<string, unknown>).answered_by as string | undefined,
+          influencedByPatterns: influencedByPatterns.length > 0 ? influencedByPatterns : undefined,
         })
       }
     }

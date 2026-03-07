@@ -26,6 +26,14 @@ export interface OrgMember {
   role: string
 }
 
+export interface AppliedPattern {
+  id: string
+  domain: string
+  pattern: string
+  confidence: number
+  override_count: number
+}
+
 export interface QaRound {
   id: string
   roundNumber: number
@@ -33,4 +41,8 @@ export interface QaRound {
   questions: QaQuestion[]
   /** Whether this round is the rollback point (restored-to marker) */
   isRollbackPoint?: boolean
+  /** Number of decision patterns that were injected for this round's generation */
+  appliedPatternCount?: number
+  /** Summaries of injected patterns with override_count for outdated alerts */
+  appliedPatterns?: AppliedPattern[]
 }

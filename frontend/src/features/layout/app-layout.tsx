@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Bell, Search, Plus, Filter, Settings, CircleDot, Tag, ChevronDown, ChevronUp, X } from 'lucide-react'
+import { Bell, Search, Plus, Filter, Settings, CircleDot, Tag, ChevronDown, ChevronUp, X, Lightbulb, FileText } from 'lucide-react'
 import { useParams, useNavigate, useRouterState } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
@@ -36,6 +36,8 @@ import { useSSE } from '@/hooks/use-sse'
 import { useSSEStore } from '@/stores/sse-store'
 import { useToastStore } from '@/stores/toast-store'
 import { ProjectSettings } from '@/features/settings/project-settings'
+import { PatternsPage } from '@/features/patterns/patterns-page'
+import { ProfilePage } from '@/features/profile/profile-page'
 import {
   Dialog,
   DialogContent,
@@ -89,11 +91,15 @@ interface AppHeaderProps {
   hasNotification: boolean
   projectSelector: React.ReactNode
   onSettingsClick: () => void
+  onPatternsClick: () => void
+  onProfileClick: () => void
   onBrandClick: () => void
   isSettingsActive?: boolean
+  isPatternsActive?: boolean
+  isProfileActive?: boolean
 }
 
-function AppHeader({ searchValue, onSearchChange, hasNotification, projectSelector, onSettingsClick, onBrandClick, isSettingsActive }: AppHeaderProps) {
+function AppHeader({ searchValue, onSearchChange, hasNotification, projectSelector, onSettingsClick, onPatternsClick, onProfileClick, onBrandClick, isSettingsActive, isPatternsActive, isProfileActive }: AppHeaderProps) {
   return (
     <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-background px-4 md:px-6">
       {/* Left — brand + divider + project selector */}
@@ -166,6 +172,28 @@ function AppHeader({ searchValue, onSearchChange, hasNotification, projectSelect
         <IconButton
           type="button"
           variant="ghost"
+          aria-label="Decision Patterns"
+          onClick={onPatternsClick}
+          className={cn(
+            isPatternsActive ? 'bg-accent text-foreground' : 'text-muted-foreground'
+          )}
+        >
+          <Lightbulb className="h-5 w-5" />
+        </IconButton>
+        <IconButton
+          type="button"
+          variant="ghost"
+          aria-label="Project Profile"
+          onClick={onProfileClick}
+          className={cn(
+            isProfileActive ? 'bg-accent text-foreground' : 'text-muted-foreground'
+          )}
+        >
+          <FileText className="h-5 w-5" />
+        </IconButton>
+        <IconButton
+          type="button"
+          variant="ghost"
           aria-label="Settings"
           onClick={onSettingsClick}
           className={cn(
@@ -201,6 +229,9 @@ export function AppLayout() {
   const { user } = useAuth()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const isSettingsPage = pathname.endsWith('/settings')
+  const isPatternsPage = pathname.endsWith('/patterns')
+  const isProfilePage = pathname.endsWith('/profile')
+  const isSubPage = isSettingsPage || isPatternsPage || isProfilePage
 
   const [searchValue, setSearchValue] = React.useState('')
   const [createProjectOpen, setCreateProjectOpen] = React.useState(false)
@@ -266,12 +297,12 @@ export function AppLayout() {
   )
   const hasNotification = useSSEStore((s) => s.hasNotification)
 
-  // Close agent dialog when navigating to settings
+  // Close agent dialog when navigating to sub-pages
   React.useEffect(() => {
-    if (isSettingsPage) {
+    if (isSubPage) {
       setAgentNotConfiguredOpen(false)
     }
-  }, [isSettingsPage])
+  }, [isSubPage])
 
   // Redirect to first project if current slug is "default" and projects are loaded
   React.useEffect(() => {
@@ -383,6 +414,20 @@ export function AppLayout() {
     })
   }
 
+  function handlePatternsClick() {
+    void navigate({
+      to: '/projects/$projectSlug/patterns',
+      params: { projectSlug },
+    })
+  }
+
+  function handleProfileClick() {
+    void navigate({
+      to: '/projects/$projectSlug/profile',
+      params: { projectSlug },
+    })
+  }
+
   function handleBrandClick() {
     void navigate({
       to: '/projects/$projectSlug',
@@ -462,8 +507,12 @@ export function AppLayout() {
         onSearchChange={setSearchValue}
         hasNotification={hasNotification}
         onSettingsClick={handleSettingsClick}
+        onPatternsClick={handlePatternsClick}
+        onProfileClick={handleProfileClick}
         onBrandClick={handleBrandClick}
         isSettingsActive={isSettingsPage}
+        isPatternsActive={isPatternsPage}
+        isProfileActive={isProfilePage}
         projectSelector={
           <ProjectSelector
             projects={projects}
@@ -478,6 +527,10 @@ export function AppLayout() {
       <main className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden bg-accent p-4 md:gap-6 md:p-8">
         {isSettingsPage ? (
           <ProjectSettings projectId={projectId} activeProject={activeProject} projectSlug={projectSlug} />
+        ) : isPatternsPage ? (
+          <PatternsPage projectId={projectId} />
+        ) : isProfilePage ? (
+          <ProfilePage projectId={projectId} />
         ) : (
           <>
             {/* Page header */}

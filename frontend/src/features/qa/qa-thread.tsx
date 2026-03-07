@@ -1,10 +1,39 @@
 import * as React from 'react'
+import { AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Select } from '@/components/ui/select'
 import { NewQuestionIndicator } from '@/components/ui/new-question-indicator'
 import { CourseCorrectionInput } from '@/components/ui/course-correction-input'
 import { QuestionBlock } from './question-block'
-import type { QaRound, QaQuestion } from './types'
+import { PatternIndicatorBadge } from './pattern-indicator-badge'
+import type { AppliedPattern, QaRound, QaQuestion } from './types'
+
+// Patterns with override_count > 2 get the "outdated?" prompt per spec §8.
+const OVERRIDE_ALERT_THRESHOLD = 2
+
+function OutdatedPatternAlert({ patterns }: { patterns: AppliedPattern[] }) {
+  if (patterns.length === 0) return null
+  return (
+    <div className="flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-3">
+      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
+      <div className="flex flex-col gap-0.5">
+        <span className="text-[11px] font-medium text-amber-500">
+          {patterns.length === 1 ? 'A pattern' : `${patterns.length} patterns`} used here may be outdated
+        </span>
+        <ul className="flex flex-col gap-0.5">
+          {patterns.map((p) => (
+            <li key={p.id} className="text-[11px] text-amber-400/80">
+              "{p.pattern}" — overridden {p.override_count} time{p.override_count !== 1 ? 's' : ''}
+            </li>
+          ))}
+        </ul>
+        <span className="mt-0.5 text-[11px] text-muted-foreground">
+          Consider retiring or superseding this pattern in the Patterns page.
+        </span>
+      </div>
+    </div>
+  )
+}
 
 interface QaThreadProps {
   rounds: QaRound[]
@@ -85,14 +114,9 @@ function QaThread({
           <Select
             value={stage}
             onChange={(e) => onStageChange(e.target.value)}
-            className="px-3 py-1.5 bg-background"
-          >
-            {stages.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </Select>
+            options={stages.map((s) => ({ value: s, label: s }))}
+            className="w-40"
+          />
         )}
       </div>
 
@@ -110,6 +134,23 @@ function QaThread({
                   </span>
                   <div className="h-px flex-1 bg-border" />
                 </div>
+
+                {/* Pattern indicator badge */}
+                {round.appliedPatternCount != null && round.appliedPatternCount > 0 && (
+                  <PatternIndicatorBadge
+                    patternCount={round.appliedPatternCount}
+                    patterns={round.appliedPatterns}
+                  />
+                )}
+
+                {/* Outdated pattern alert — shown when injected patterns have high override counts */}
+                {round.appliedPatterns && (
+                  <OutdatedPatternAlert
+                    patterns={round.appliedPatterns.filter(
+                      (p) => p.override_count > OVERRIDE_ALERT_THRESHOLD
+                    )}
+                  />
+                )}
 
                 {/* Questions in round */}
                 {round.questions.map((q) => (

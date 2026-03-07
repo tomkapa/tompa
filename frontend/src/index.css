@@ -39,87 +39,146 @@
 
 @layer base {
   :root {
-    /* Halo Design System — Light Mode */
-    --background: #FFFFFF;
-    --foreground: #2A2933;
-    --card: #FFFFFF;
-    --card-foreground: #2A2933;
-    --popover: #FFFFFF;
-    --popover-foreground: #2A2933;
-    --primary: #5749F4;
-    --primary-foreground: #FFFFFF;
-    --secondary: #D9D9DB;
-    --secondary-foreground: #2A2933;
-    --muted: #F5F5F5;
-    --muted-foreground: #616167;
-    --accent: #F5F5F5;
-    --accent-foreground: #2A2933;
-    --destructive: #CC3314;
-    --destructive-foreground: #FFFFFF;
-    --border: #C5C5CB;
-    --input: #C5C5CB;
-    --ring: #E1E2E5;
-    --sidebar: #FFFFFF;
-    --sidebar-foreground: #939399;
-    --sidebar-accent: #F5F5F5;
-    --sidebar-accent-foreground: #2A2933;
-    --sidebar-border: #D9D9DB;
-    --sidebar-primary: #F5F5F5;
-    --sidebar-primary-foreground: #2A2933;
-    --sidebar-ring: #D9D9DB;
-    --tile: #F5F5F5;
+    /* --- Linear-Inspired — Light Mode --- */
 
-    /* Semantic colors */
-    --color-success: #A1E5A1;
-    --color-success-foreground: #003300;
-    --color-warning: #FFD9B2;
-    --color-warning-foreground: #4D2700;
-    --color-error: #FFBFB2;
-    --color-error-foreground: #590F00;
-    --color-info: #C9D6F0;
-    --color-info-foreground: #001133;
+    /* Base Colors: Clean White & Rich Charcoal */
+    --background: #FFFFFF;
+    --foreground: #09090B;
+    /* Zinc 950 */
+
+    /* Cards & Popovers */
+    --card: #FFFFFF;
+    --card-foreground: #09090B;
+    --popover: #FFFFFF;
+    --popover-foreground: #09090B;
+
+    /* Primary Accent: Linear Purple */
+    --primary: #5E6AD2;
+    --primary-foreground: #FFFFFF;
+
+    /* Secondary: Light gray for subtle UI elements */
+    --secondary: #F4F4F5;
+    /* Zinc 100 */
+    --secondary-foreground: #18181B;
+    /* Zinc 900 */
+
+    /* Muted: Subdued text and backgrounds */
+    --muted: #F4F4F5;
+    /* Zinc 100 */
+    --muted-foreground: #71717A;
+    /* Zinc 500 */
+
+    /* Accent: Highlights (hover states, etc.) */
+    --accent: #F4F4F5;
+    --accent-foreground: #09090B;
+
+    /* Destructive: Urgent Red */
+    --destructive: #E5484D;
+    --destructive-foreground: #FFFFFF;
+
+    /* Borders & Inputs: Subtle separation */
+    --border: #E4E4E7;
+    /* Zinc 200 */
+    --input: #E4E4E7;
+    --ring: #5E6AD2;
+    /* Follows primary */
+
+    /* Sidebar/Nav System */
+    --sidebar: #FAFAFA;
+    /* Zinc 50 - slight contrast from background */
+    --sidebar-foreground: #52525B;
+    /* Zinc 600 */
+    --sidebar-accent: #F4F4F5;
+    /* Zinc 100 */
+    --sidebar-accent-foreground: #09090B;
+    --sidebar-border: #E4E4E7;
+    --sidebar-primary: #5E6AD2;
+    --sidebar-primary-foreground: #FFFFFF;
+    --sidebar-ring: #5E6AD2;
+
+    /* Others */
+    --tile: #F4F4F5;
+
+    /* --- Semantic Status Colors (Linear Palette) --- */
+    --color-success: #30A46C;
+    /* Crisp Green */
+    --color-success-foreground: #FFFFFF;
+    --color-warning: #F76B15;
+    /* Vivid Orange */
+    --color-warning-foreground: #FFFFFF;
+    --color-error: #E5484D;
+    /* Also destructive */
+    --color-error-foreground: #FFFFFF;
+    --color-info: #0091FF;
+    /* Bright Blue */
+    --color-info-foreground: #FFFFFF;
   }
 
   .dark {
-    /* Halo Design System — Dark Mode */
-    --background: #131124;
-    --foreground: #E8E8EA;
-    --card: #1A182E;
-    --card-foreground: #FFFFFF;
-    --popover: #1A182E;
-    --popover-foreground: #FFFFFF;
-    --primary: #5749F4;
-    --primary-foreground: #FFFFFF;
-    --secondary: #403F51;
-    --secondary-foreground: #FFFFFF;
-    --muted: #2E2E2E;
-    --muted-foreground: #888799;
-    --accent: #131124;
-    --accent-foreground: #F2F3F0;
-    --destructive: #CC3314;
-    --destructive-foreground: #FFFFFF;
-    --border: #2B283D;
-    --input: #2B283D;
-    --ring: #666666;
-    --sidebar: #1A182E;
-    --sidebar-foreground: #ACABB2;
-    --sidebar-accent: #2B283D;
-    --sidebar-accent-foreground: #E8E8EA;
-    --sidebar-border: #2B283D;
-    --sidebar-primary: #0F5FFE;
-    --sidebar-primary-foreground: #E8E8EA;
-    --sidebar-ring: #2B283D;
-    --tile: #1A182E;
+    /* --- Linear-Inspired — Dark Mode --- */
 
-    /* Semantic colors */
-    --color-success: #3B4748;
-    --color-success-foreground: #A1E5A1;
-    --color-warning: #53484F;
-    --color-warning-foreground: #FFD9B2;
-    --color-error: #53424F;
-    --color-error-foreground: #FFBFB2;
-    --color-info: #404562;
-    --color-info-foreground: #B2CCFF;
+    /* Base Colors: Cool Deep Slate (Not pure black, but very dark) */
+    --background: #0B0C0E;
+    --foreground: #F4F4F5;
+    /* Zinc 100 - soft white */
+
+    /* Cards & Popovers: Elevated layers are slightly lighter/cooler */
+    --card: #16171A;
+    --card-foreground: #F4F4F5;
+    --popover: #16171A;
+    --popover-foreground: #F4F4F5;
+
+    /* Primary Accent: Same purple, remains vivid */
+    --primary: #5E6AD2;
+    --primary-foreground: #FFFFFF;
+
+    /* Secondary: Dark Gray for contrast */
+    --secondary: #1C1D21;
+    --secondary-foreground: #FAFAFA;
+
+    /* Muted: Low contrast UI elements */
+    --muted: #1C1D21;
+    --muted-foreground: #A1A1AA;
+    /* Zinc 400 */
+
+    /* Accent: Hover states */
+    --accent: #1C1D21;
+    --accent-foreground: #F4F4F5;
+
+    /* Destructive: Vibrant red on dark */
+    --destructive: #E5484D;
+    --destructive-foreground: #FFFFFF;
+
+    /* Borders & Inputs: Very subtle contrast */
+    --border: #232529;
+    --input: #232529;
+    --ring: #5E6AD2;
+
+    /* Sidebar/Nav System */
+    --sidebar: #0B0C0E;
+    /* Matches background */
+    --sidebar-foreground: #A1A1AA;
+    /* Zinc 400 */
+    --sidebar-accent: #1C1D21;
+    --sidebar-accent-foreground: #F4F4F5;
+    --sidebar-border: #232529;
+    --sidebar-primary: #5E6AD2;
+    --sidebar-primary-foreground: #FFFFFF;
+    --sidebar-ring: #5E6AD2;
+
+    /* Others */
+    --tile: #16171A;
+
+    /* --- Semantic Status Colors (Dark Mode Tones) --- */
+    /* Kept vibrant but adjusted for contrast on dark fields */
+    --color-success: #30A46C;
+    --color-success-foreground: #D3F1DF;
+    --color-warning: #F76B15;
+    --color-warning-foreground: #FFE7D6;
+    --color-error: #E5484D;
+    --color-error-foreground: #FFE9E9;
+    --color-info: #0091FF;
+    --color-info-foreground: #D6EBFF;
   }
 }
 
@@ -129,26 +188,35 @@
     scrollbar-width: thin;
     scrollbar-color: var(--border) transparent;
   }
+
   *::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
+
   *::-webkit-scrollbar-track {
     background: transparent;
   }
+
   *::-webkit-scrollbar-thumb {
     background-color: var(--border);
     border-radius: 3px;
   }
+
   *::-webkit-scrollbar-thumb:hover {
     background-color: var(--muted-foreground);
   }
+
   *::-webkit-scrollbar-corner {
     background: transparent;
   }
-  html, body, #root {
+
+  html,
+  body,
+  #root {
     height: 100%;
   }
+
   body {
     @apply bg-background text-foreground;
     font-family: 'Inter', system-ui, sans-serif;
@@ -160,41 +228,91 @@
 }
 
 @keyframes checkmark-pop {
-  0% { transform: scale(0); opacity: 0; }
-  60% { transform: scale(1.15); opacity: 1; }
-  100% { transform: scale(1); opacity: 1; }
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+
+  60% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 @keyframes radio-pop {
-  0% { transform: scale(0); }
-  60% { transform: scale(1.2); }
-  100% { transform: scale(1); }
+  0% {
+    transform: scale(0);
+  }
+
+  60% {
+    transform: scale(1.2);
+  }
+
+  100% {
+    transform: scale(1);
+  }
 }
 
 @layer components {
+
   /* Base prose — optimised for reading */
-  .md-prose { @apply text-[14px] leading-[1.75] text-foreground; }
+  .md-prose {
+    @apply text-[14px] leading-[1.75] text-foreground;
+  }
 
   /* Headings — clear hierarchy, generous breathing room */
-  .md-prose h1 { @apply text-xl font-semibold text-foreground mt-8 mb-3 first:mt-0; }
-  .md-prose h2 { @apply text-base font-semibold text-foreground mt-6 mb-2 first:mt-0; }
-  .md-prose h3 { @apply text-[14px] font-semibold text-foreground mt-4 mb-1.5 first:mt-0; }
+  .md-prose h1 {
+    @apply text-xl font-semibold text-foreground mt-8 mb-3 first:mt-0;
+  }
+
+  .md-prose h2 {
+    @apply text-base font-semibold text-foreground mt-6 mb-2 first:mt-0;
+  }
+
+  .md-prose h3 {
+    @apply text-[14px] font-semibold text-foreground mt-4 mb-1.5 first:mt-0;
+  }
 
   /* Body text */
-  .md-prose p { @apply text-[14px] leading-[1.75] text-foreground/90 mb-4; }
+  .md-prose p {
+    @apply text-[14px] leading-[1.75] text-foreground/90 mb-4;
+  }
 
   /* Lists — comfortable item spacing */
-  .md-prose ul { @apply list-disc pl-6 mb-4 space-y-1.5 text-[14px] text-foreground/90; }
-  .md-prose ol { @apply list-decimal pl-6 mb-4 space-y-1.5 text-[14px] text-foreground/90; }
-  .md-prose li { @apply leading-[1.75]; }
-  .md-prose li > p { @apply mb-1; }
+  .md-prose ul {
+    @apply list-disc pl-6 mb-4 space-y-1.5 text-[14px] text-foreground/90;
+  }
+
+  .md-prose ol {
+    @apply list-decimal pl-6 mb-4 space-y-1.5 text-[14px] text-foreground/90;
+  }
+
+  .md-prose li {
+    @apply leading-[1.75];
+  }
+
+  .md-prose li>p {
+    @apply mb-1;
+  }
 
   /* Inline code */
-  .md-prose code { @apply text-[13px] font-mono bg-muted/80 text-foreground rounded-md px-1.5 py-0.5; }
+  .md-prose code {
+    @apply text-[13px] font-mono bg-muted/80 text-foreground rounded-md px-1.5 py-0.5;
+  }
 
   /* Code blocks */
-  .md-prose pre { @apply bg-muted/60 rounded-xl p-4 mb-4 overflow-x-auto border border-border/50; }
-  .md-prose pre code { @apply bg-transparent p-0 text-[13px]; }
+  .md-prose pre {
+    @apply bg-muted/60 rounded-xl p-4 mb-4 overflow-x-auto border border-border/50;
+  }
+
+  .md-prose pre code {
+    @apply bg-transparent p-0 text-[13px];
+  }
 
   /* Blockquote */
   .md-prose blockquote {
@@ -202,29 +320,60 @@
   }
 
   /* Tables */
-  .md-prose table { @apply w-full text-[14px] border-collapse mb-4; }
-  .md-prose th { @apply border border-border px-4 py-2 font-semibold text-foreground bg-muted/60 text-left; }
-  .md-prose td { @apply border border-border px-4 py-2 text-foreground/80; }
-  .md-prose tr:nth-child(even) td { @apply bg-muted/20; }
+  .md-prose table {
+    @apply w-full text-[14px] border-collapse mb-4;
+  }
+
+  .md-prose th {
+    @apply border border-border px-4 py-2 font-semibold text-foreground bg-muted/60 text-left;
+  }
+
+  .md-prose td {
+    @apply border border-border px-4 py-2 text-foreground/80;
+  }
+
+  .md-prose tr:nth-child(even) td {
+    @apply bg-muted/20;
+  }
 
   /* Inline elements */
-  .md-prose a { @apply text-primary underline underline-offset-4 decoration-primary/40 hover:decoration-primary transition-colors; }
-  .md-prose strong { @apply font-semibold text-foreground; }
-  .md-prose em { @apply text-foreground/80; }
+  .md-prose a {
+    @apply text-primary underline underline-offset-4 decoration-primary/40 hover:decoration-primary transition-colors;
+  }
+
+  .md-prose strong {
+    @apply font-semibold text-foreground;
+  }
+
+  .md-prose em {
+    @apply text-foreground/80;
+  }
 
   /* Divider */
-  .md-prose hr { @apply border-border/60 my-6; }
+  .md-prose hr {
+    @apply border-border/60 my-6;
+  }
 
   /* Mermaid diagrams */
-  .md-prose .mermaid-block { @apply my-6 flex justify-center overflow-x-auto rounded-xl bg-muted/30 p-4; }
-  .md-prose .mermaid-block svg { @apply max-w-full; }
+  .md-prose .mermaid-block {
+    @apply my-6 flex justify-center overflow-x-auto rounded-xl bg-muted/30 p-4;
+  }
+
+  .md-prose .mermaid-block svg {
+    @apply max-w-full;
+  }
 
   /* Remove bottom margin from last child to avoid extra padding */
-  .md-prose > *:last-child { @apply mb-0; }
+  .md-prose>*:last-child {
+    @apply mb-0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;

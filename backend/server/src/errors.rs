@@ -8,8 +8,10 @@ use thiserror::Error;
 
 use crate::{
     auth::types::AuthError, container_keys::types::ContainerKeyError,
-    knowledge::types::KnowledgeError, orgs::types::OrgError, project::types::ProjectError,
-    qa::types::QaError, story::types::StoryError, task::types::TaskError,
+    decision_patterns::types::DecisionPatternError, knowledge::types::KnowledgeError,
+    orgs::types::OrgError, project::types::ProjectError,
+    project_profiles::types::ProjectProfileError, qa::types::QaError, story::types::StoryError,
+    task::types::TaskError,
 };
 
 #[derive(Debug, Error)]
@@ -30,6 +32,10 @@ pub enum ApiError {
     Knowledge(#[from] KnowledgeError),
     #[error(transparent)]
     ContainerKey(#[from] ContainerKeyError),
+    #[error(transparent)]
+    DecisionPattern(#[from] DecisionPatternError),
+    #[error(transparent)]
+    ProjectProfile(#[from] ProjectProfileError),
     #[error("Unauthorized")]
     Unauthorized,
     #[error("Forbidden")]
@@ -90,6 +96,19 @@ fn map_domain_error(err: &ApiError) -> (StatusCode, String) {
             ContainerKeyError::LabelRequired => (StatusCode::BAD_REQUEST, e.to_string()),
             ContainerKeyError::InvalidMode => (StatusCode::BAD_REQUEST, e.to_string()),
             ContainerKeyError::ProjectNotFound => (StatusCode::NOT_FOUND, e.to_string()),
+        },
+        ApiError::DecisionPattern(e) => match e {
+            DecisionPatternError::NotFound => (StatusCode::NOT_FOUND, e.to_string()),
+            DecisionPatternError::PatternRequired
+            | DecisionPatternError::RationaleRequired
+            | DecisionPatternError::InvalidDomain
+            | DecisionPatternError::SupersedePatternRequired => {
+                (StatusCode::BAD_REQUEST, e.to_string())
+            }
+        },
+        ApiError::ProjectProfile(e) => match e {
+            ProjectProfileError::NotFound => (StatusCode::NOT_FOUND, e.to_string()),
+            ProjectProfileError::ContentRequired => (StatusCode::BAD_REQUEST, e.to_string()),
         },
         _ => (
             StatusCode::INTERNAL_SERVER_ERROR,

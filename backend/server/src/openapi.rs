@@ -69,6 +69,14 @@ impl Modify for CookieAuth {
         crate::container_keys::handler::list_keys,
         crate::container_keys::handler::create_key,
         crate::container_keys::handler::revoke_key,
+        crate::decision_patterns::handler::list_patterns,
+        crate::decision_patterns::handler::get_pattern,
+        crate::decision_patterns::handler::update_pattern,
+        crate::decision_patterns::handler::retire_pattern,
+        crate::decision_patterns::handler::supersede_pattern,
+        crate::project_profiles::handler::get_profile,
+        crate::project_profiles::handler::update_profile,
+        crate::project_profiles::handler::regenerate_profile,
     ),
     components(schemas(
         crate::auth::types::MeResponse,
@@ -105,6 +113,12 @@ impl Modify for CookieAuth {
         crate::container_keys::types::CreateKeyRequest,
         crate::container_keys::types::CreateKeyResponse,
         crate::container_keys::types::KeyListItem,
+        crate::decision_patterns::types::DecisionPatternResponse,
+        crate::decision_patterns::types::UpdatePatternRequest,
+        crate::decision_patterns::types::SupersedePatternRequest,
+        crate::project_profiles::types::ProjectProfileResponse,
+        crate::project_profiles::types::ProjectProfileContent,
+        crate::project_profiles::types::UpdateProfileRequest,
     )),
     modifiers(&CookieAuth),
     tags(
@@ -116,6 +130,8 @@ impl Modify for CookieAuth {
         (name = "qa", description = "Q&A Rounds — structured question/answer pipeline"),
         (name = "knowledge", description = "Knowledge Base — org/project/story-scoped knowledge entries"),
         (name = "container-keys", description = "Container API Keys — keys for agent container authentication"),
+        (name = "decision-patterns", description = "Decision Patterns — auto-extracted reusable decision rules"),
+        (name = "project-profiles", description = "Project Profiles — synthesized project intelligence"),
     )
 )]
 pub struct ApiDoc;

@@ -3,11 +3,13 @@ pub mod auth;
 pub mod config;
 pub mod container_keys;
 pub mod db;
+pub mod decision_patterns;
 pub mod errors;
 pub mod knowledge;
 pub mod openapi;
 pub mod orgs;
 pub mod project;
+pub mod project_profiles;
 pub mod qa;
 pub mod sse;
 pub mod state;
@@ -37,6 +39,8 @@ pub fn build_app(state: AppState) -> Router {
         .merge(story::handler::router(state.clone()))
         .merge(task::handler::router(state.clone()))
         .merge(qa::handler::router(state.clone()))
+        .merge(decision_patterns::handler::router(state.clone()))
+        .merge(project_profiles::handler::router(state.clone()))
         .merge(agents::handler::router(state.clone()))
         .merge(sse::handler::router(state.clone()))
         .layer(TraceLayer::new_for_http())

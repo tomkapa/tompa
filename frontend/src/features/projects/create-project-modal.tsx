@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
-import { InputGroup } from '@/components/ui/input'
+import { Input } from '@/components/ui/input'
 import { TextareaGroup } from '@/components/ui/textarea'
 import {
   Dialog,
@@ -76,7 +76,7 @@ export function CreateProjectModal({
 
           {/* Content */}
           <div className="flex flex-col gap-5 px-8 py-6">
-            <InputGroup
+            <Input
               label="Project Name"
               placeholder="e.g., My Startup App"
               value={formData.name}
@@ -91,7 +91,7 @@ export function CreateProjectModal({
               rows={3}
             />
 
-            <InputGroup
+            <Input
               label="Repository URL"
               placeholder="https://github.com/org/repo"
               value={formData.githubRepoUrl}

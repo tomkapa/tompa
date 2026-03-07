@@ -1,10 +1,8 @@
 import * as React from 'react'
 import { cn } from '@/lib/utils'
 
-// Raw Input — pill-shaped, matches Halo Input component
-export type InputProps = React.InputHTMLAttributes<HTMLInputElement>
-
-const Input = React.forwardRef<HTMLInputElement, InputProps>(
+// Private atom — pill-shaped field
+const InputField = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
   ({ className, type, ...props }, ref) => {
     return (
       <input
@@ -19,33 +17,31 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     )
   }
 )
-Input.displayName = 'Input'
+InputField.displayName = 'InputField'
 
-// InputGroup — Label + Input, matches Halo "Input Group/Default" and "Input Group/Filled"
-interface InputGroupProps extends InputProps {
+// Input — optional label + field. Matches Halo "Input Group/Default" and "Input Group/Filled".
+// When no label is provided, renders the field directly with no wrapper.
+export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string
-  id?: string
 }
 
-const InputGroup = React.forwardRef<HTMLInputElement, InputGroupProps>(
+const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ label, id, className, ...props }, ref) => {
     const generatedId = React.useId()
     const inputId = id ?? generatedId
+    if (!label) {
+      return <InputField id={inputId} className={className} ref={ref} {...props} />
+    }
     return (
-      <div className={cn('flex w-full flex-col gap-1.5', className)}>
-        {label && (
-          <label
-            htmlFor={inputId}
-            className="text-sm font-medium text-foreground leading-[1.43]"
-          >
-            {label}
-          </label>
-        )}
-        <Input id={inputId} ref={ref} {...props} />
+      <div className="flex w-full flex-col gap-1.5">
+        <label htmlFor={inputId} className="text-sm font-medium text-foreground leading-[1.43]">
+          {label}
+        </label>
+        <InputField id={inputId} className={className} ref={ref} {...props} />
       </div>
     )
   }
 )
-InputGroup.displayName = 'InputGroup'
+Input.displayName = 'Input'
 
-export { Input, InputGroup }
+export { Input }

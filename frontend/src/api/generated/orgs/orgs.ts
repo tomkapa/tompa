@@ -25,7 +25,9 @@ import type {
 
 import type {
   CreateOrgRequest,
-  OrgResponse
+  OrgMemberResponse,
+  OrgResponse,
+  UpdateOrgRequest
 } from '../tompaAPI.schemas';
 
 
@@ -255,4 +257,226 @@ export const useCreateOrg = <TError = void,
       > => {
       return useMutation(getCreateOrgMutationOptions(options), queryClient);
     }
+    /**
+ * @summary PATCH /api/v1/orgs/current — rename the current user's active organization.
+ */
+export type updateCurrentOrgResponse204 = {
+  data: void
+  status: 204
+}
+
+export type updateCurrentOrgResponse400 = {
+  data: void
+  status: 400
+}
+
+export type updateCurrentOrgResponse401 = {
+  data: void
+  status: 401
+}
+
+export type updateCurrentOrgResponseSuccess = (updateCurrentOrgResponse204) & {
+  headers: Headers;
+};
+export type updateCurrentOrgResponseError = (updateCurrentOrgResponse400 | updateCurrentOrgResponse401) & {
+  headers: Headers;
+};
+
+export type updateCurrentOrgResponse = (updateCurrentOrgResponseSuccess | updateCurrentOrgResponseError)
+
+export const getUpdateCurrentOrgUrl = () => {
+
+
+  
+
+  return `/api/v1/orgs/current`
+}
+
+export const updateCurrentOrg = async (updateOrgRequest: UpdateOrgRequest, options?: RequestInit): Promise<updateCurrentOrgResponse> => {
+  
+  const res = await fetch(getUpdateCurrentOrgUrl(),
+  {      
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateOrgRequest,)
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+  
+  const data: updateCurrentOrgResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as updateCurrentOrgResponse
+}
+  
+
+
+
+export const getUpdateCurrentOrgMutationOptions = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCurrentOrg>>, TError,{data: UpdateOrgRequest}, TContext>, fetch?: RequestInit}
+): UseMutationOptions<Awaited<ReturnType<typeof updateCurrentOrg>>, TError,{data: UpdateOrgRequest}, TContext> => {
+
+const mutationKey = ['updateCurrentOrg'];
+const {mutation: mutationOptions, fetch: fetchOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, fetch: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateCurrentOrg>>, {data: UpdateOrgRequest}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateCurrentOrg(data,fetchOptions)
+        }
+
+
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateCurrentOrgMutationResult = NonNullable<Awaited<ReturnType<typeof updateCurrentOrg>>>
+    export type UpdateCurrentOrgMutationBody = UpdateOrgRequest
+    export type UpdateCurrentOrgMutationError = void
+
+    /**
+ * @summary PATCH /api/v1/orgs/current — rename the current user's active organization.
+ */
+export const useUpdateCurrentOrg = <TError = void,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCurrentOrg>>, TError,{data: UpdateOrgRequest}, TContext>, fetch?: RequestInit}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof updateCurrentOrg>>,
+        TError,
+        {data: UpdateOrgRequest},
+        TContext
+      > => {
+      return useMutation(getUpdateCurrentOrgMutationOptions(options), queryClient);
+    }
+    /**
+ * @summary GET /api/v1/orgs/members — list all members of the current org.
+ */
+export type listMembersResponse200 = {
+  data: OrgMemberResponse[]
+  status: 200
+}
+
+export type listMembersResponse401 = {
+  data: void
+  status: 401
+}
+
+export type listMembersResponseSuccess = (listMembersResponse200) & {
+  headers: Headers;
+};
+export type listMembersResponseError = (listMembersResponse401) & {
+  headers: Headers;
+};
+
+export type listMembersResponse = (listMembersResponseSuccess | listMembersResponseError)
+
+export const getListMembersUrl = () => {
+
+
+  
+
+  return `/api/v1/orgs/members`
+}
+
+export const listMembers = async ( options?: RequestInit): Promise<listMembersResponse> => {
+  
+  const res = await fetch(getListMembersUrl(),
+  {      
+    ...options,
+    method: 'GET'
     
+    
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+  
+  const data: listMembersResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as listMembersResponse
+}
+  
+
+
+
+
+export const getListMembersQueryKey = () => {
+    return [
+    `/api/v1/orgs/members`
+    ] as const;
+    }
+
+    
+export const getListMembersQueryOptions = <TData = Awaited<ReturnType<typeof listMembers>>, TError = void>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listMembers>>, TError, TData>>, fetch?: RequestInit}
+) => {
+
+const {query: queryOptions, fetch: fetchOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListMembersQueryKey();
+
+  
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMembers>>> = ({ signal }) => listMembers({ signal, ...fetchOptions });
+
+      
+
+      
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listMembers>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ListMembersQueryResult = NonNullable<Awaited<ReturnType<typeof listMembers>>>
+export type ListMembersQueryError = void
+
+
+export function useListMembers<TData = Awaited<ReturnType<typeof listMembers>>, TError = void>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof listMembers>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listMembers>>,
+          TError,
+          Awaited<ReturnType<typeof listMembers>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListMembers<TData = Awaited<ReturnType<typeof listMembers>>, TError = void>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listMembers>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listMembers>>,
+          TError,
+          Awaited<ReturnType<typeof listMembers>>
+        > , 'initialData'
+      >, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useListMembers<TData = Awaited<ReturnType<typeof listMembers>>, TError = void>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listMembers>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary GET /api/v1/orgs/members — list all members of the current org.
+ */
+
+export function useListMembers<TData = Awaited<ReturnType<typeof listMembers>>, TError = void>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof listMembers>>, TError, TData>>, fetch?: RequestInit}
+ , queryClient?: QueryClient 
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getListMembersQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
