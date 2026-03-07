@@ -21,6 +21,8 @@ impl Config {
 
         let require_or_default = |name: &str| -> String {
             if dev_mode {
+                // In dev mode OAuth credentials are optional; missing vars default to empty
+                // so the server starts without them (only dev-login is used).
                 env::var(name).unwrap_or_default()
             } else {
                 require_var(name)

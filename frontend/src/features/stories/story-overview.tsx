@@ -5,7 +5,7 @@ import { StatusBadge } from '@/components/ui/status-badge'
 import { Button } from '@/components/ui/button'
 import type { TaskType } from '@/components/ui/task-type-icon'
 import { MarkdownEditor } from '@/components/ui/markdown-editor'
-import { MarkdownViewer } from '@/components/ui/markdown-viewer'
+import { ExpandableMarkdownViewer } from '@/components/ui/markdown-viewer'
 
 interface StoryOverviewProps {
   story: StoryResponse
@@ -72,7 +72,10 @@ export function StoryOverview({ story, tasks, onTaskClick, onApproveDescription,
             )}
           </div>
           <div className="max-h-72 overflow-y-auto">
-            <MarkdownViewer content={story.pending_refined_description ?? ''} />
+            <ExpandableMarkdownViewer
+              content={story.pending_refined_description ?? ''}
+              label="AI-refined description"
+            />
           </div>
         </div>
       )}

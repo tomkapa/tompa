@@ -81,7 +81,10 @@ async fn sse_handler(
     let inner = UnboundedReceiverStream::new(rx)
         .map(|event: SseEvent| {
             let name = event.event_name();
-            let data = serde_json::to_string(&event).unwrap_or_default();
+            let data = serde_json::to_string(&event).unwrap_or_else(|e| {
+                tracing::error!(event_name = name, %e, "failed to serialize SSE event");
+                String::new()
+            });
             Ok::<Event, Infallible>(Event::default().event(name).data(data))
         })
         .boxed();

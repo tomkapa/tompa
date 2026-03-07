@@ -128,6 +128,7 @@ pub async fn list_tasks(tx: &mut OrgTx, story_id: Uuid) -> Result<Vec<TaskRespon
     let result = tasks
         .into_iter()
         .map(|t| {
+            // Tasks with no dependencies are absent from the map; empty vec is correct.
             let deps = deps_by_task.remove(&t.id).unwrap_or_default();
             to_task_response(t, deps)
         })

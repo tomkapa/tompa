@@ -172,25 +172,55 @@
 }
 
 @layer components {
-  .md-prose h1 { @apply text-lg font-semibold text-foreground mt-4 mb-2; }
-  .md-prose h2 { @apply text-base font-semibold text-foreground mt-3 mb-2; }
-  .md-prose h3 { @apply text-sm font-semibold text-foreground mt-2 mb-1; }
-  .md-prose p  { @apply text-[13px] leading-relaxed text-muted-foreground mb-2; }
-  .md-prose ul { @apply list-disc pl-5 mb-2 text-[13px] text-muted-foreground; }
-  .md-prose ol { @apply list-decimal pl-5 mb-2 text-[13px] text-muted-foreground; }
-  .md-prose li { @apply mb-0.5 leading-relaxed; }
-  .md-prose code { @apply text-[12px] font-mono bg-muted text-foreground rounded px-1 py-0.5; }
-  .md-prose pre { @apply bg-muted rounded-lg p-3 mb-2 overflow-x-auto; }
-  .md-prose pre code { @apply bg-transparent px-0 py-0; }
-  .md-prose blockquote { @apply border-l-2 border-border pl-3 text-[13px] text-muted-foreground italic mb-2; }
-  .md-prose table { @apply w-full text-[13px] border-collapse mb-2; }
-  .md-prose th { @apply border border-border px-3 py-1.5 font-semibold text-foreground bg-muted text-left; }
-  .md-prose td { @apply border border-border px-3 py-1.5 text-muted-foreground; }
-  .md-prose a { @apply text-primary underline underline-offset-2 hover:opacity-80; }
+  /* Base prose — optimised for reading */
+  .md-prose { @apply text-[14px] leading-[1.75] text-foreground; }
+
+  /* Headings — clear hierarchy, generous breathing room */
+  .md-prose h1 { @apply text-xl font-semibold text-foreground mt-8 mb-3 first:mt-0; }
+  .md-prose h2 { @apply text-base font-semibold text-foreground mt-6 mb-2 first:mt-0; }
+  .md-prose h3 { @apply text-[14px] font-semibold text-foreground mt-4 mb-1.5 first:mt-0; }
+
+  /* Body text */
+  .md-prose p { @apply text-[14px] leading-[1.75] text-foreground/90 mb-4; }
+
+  /* Lists — comfortable item spacing */
+  .md-prose ul { @apply list-disc pl-6 mb-4 space-y-1.5 text-[14px] text-foreground/90; }
+  .md-prose ol { @apply list-decimal pl-6 mb-4 space-y-1.5 text-[14px] text-foreground/90; }
+  .md-prose li { @apply leading-[1.75]; }
+  .md-prose li > p { @apply mb-1; }
+
+  /* Inline code */
+  .md-prose code { @apply text-[13px] font-mono bg-muted/80 text-foreground rounded-md px-1.5 py-0.5; }
+
+  /* Code blocks */
+  .md-prose pre { @apply bg-muted/60 rounded-xl p-4 mb-4 overflow-x-auto border border-border/50; }
+  .md-prose pre code { @apply bg-transparent p-0 text-[13px]; }
+
+  /* Blockquote */
+  .md-prose blockquote {
+    @apply border-l-[3px] border-primary/40 pl-4 my-4 text-[14px] leading-[1.75] text-foreground/70 italic;
+  }
+
+  /* Tables */
+  .md-prose table { @apply w-full text-[14px] border-collapse mb-4; }
+  .md-prose th { @apply border border-border px-4 py-2 font-semibold text-foreground bg-muted/60 text-left; }
+  .md-prose td { @apply border border-border px-4 py-2 text-foreground/80; }
+  .md-prose tr:nth-child(even) td { @apply bg-muted/20; }
+
+  /* Inline elements */
+  .md-prose a { @apply text-primary underline underline-offset-4 decoration-primary/40 hover:decoration-primary transition-colors; }
   .md-prose strong { @apply font-semibold text-foreground; }
-  .md-prose hr { @apply border-border my-3; }
-  .md-prose .mermaid-block { @apply my-4 flex justify-center overflow-x-auto; }
+  .md-prose em { @apply text-foreground/80; }
+
+  /* Divider */
+  .md-prose hr { @apply border-border/60 my-6; }
+
+  /* Mermaid diagrams */
+  .md-prose .mermaid-block { @apply my-6 flex justify-center overflow-x-auto rounded-xl bg-muted/30 p-4; }
   .md-prose .mermaid-block svg { @apply max-w-full; }
+
+  /* Remove bottom margin from last child to avoid extra padding */
+  .md-prose > *:last-child { @apply mb-0; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -241,7 +241,7 @@ impl GitManager {
 
         let commit_sha = if out.status.success() {
             parse_commit_sha_from_output(&out.stdout)
-                .unwrap_or_else(|_| head_sha(worktree).unwrap_or_default())
+                .or_else(|_| head_sha(worktree))?
         } else {
             let stdout = String::from_utf8_lossy(&out.stdout);
             if stdout.contains("nothing to commit") || stdout.contains("nothing added") {

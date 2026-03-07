@@ -652,13 +652,21 @@ pub async fn dispatch_grooming(
         }
     };
 
-    let qa_config = fetch_project_qa_config(&state.pool, project_id)
-        .await
-        .unwrap_or_default();
+    let qa_config = match fetch_project_qa_config(&state.pool, project_id).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(%story_id, %project_id, %e, "failed to fetch qa config for grooming");
+            return;
+        }
+    };
 
-    let knowledge = fetch_knowledge(&state.pool, org_id, project_id)
-        .await
-        .unwrap_or_default();
+    let knowledge = match fetch_knowledge(&state.pool, org_id, project_id).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(%story_id, %project_id, %e, "failed to fetch knowledge for grooming");
+            return;
+        }
+    };
 
     // Only dispatch role 0 (business analyst); subsequent roles are chained in on_qa_result.
     let enabled_roles = parse_enabled_grooming_roles(&qa_config);
@@ -716,28 +724,49 @@ pub async fn dispatch_grooming(
 pub async fn dispatch_planning(state: &AppState, org_id: Uuid, project_id: Uuid, story_id: Uuid) {
     tracing::info!(%story_id, %project_id, "dispatching planning");
 
-    let qa_config = fetch_project_qa_config(&state.pool, project_id)
-        .await
-        .unwrap_or_default();
-    let (model_short, _, _) = stage_config(&qa_config, "planning");
+    let qa_config = match fetch_project_qa_config(&state.pool, project_id).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(%story_id, %project_id, %e, "failed to fetch qa config for planning");
+            return;
+        }
+    };
+    let (model_short, detail_level, max_questions) = stage_config(&qa_config, "planning");
+    let detail_text = prompts::detail_levels::detail_level_threshold(detail_level);
     let model = prompts::models::resolve_model_id(&model_short);
 
-    let knowledge = fetch_knowledge(&state.pool, org_id, project_id)
-        .await
-        .unwrap_or_default();
+    let knowledge = match fetch_knowledge(&state.pool, org_id, project_id).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(%story_id, %project_id, %e, "failed to fetch knowledge for planning");
+            return;
+        }
+    };
 
-    let (story_title, description) = fetch_story_description(&state.pool, org_id, story_id)
-        .await
-        .unwrap_or_default();
+    let (story_title, description) = match fetch_story_description(&state.pool, org_id, story_id).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(%story_id, %project_id, %e, "failed to fetch story description for planning");
+            return;
+        }
+    };
     let story_context = fmt_story_context(&story_title, &description);
 
-    let grooming_decisions = fetch_stage_decisions(&state.pool, org_id, story_id, "grooming")
-        .await
-        .unwrap_or_default();
+    let grooming_decisions = match fetch_stage_decisions(&state.pool, org_id, story_id, "grooming").await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(%story_id, %project_id, %e, "failed to fetch grooming decisions for planning");
+            return;
+        }
+    };
 
-    let planning_decisions = fetch_stage_decisions(&state.pool, org_id, story_id, "planning")
-        .await
-        .unwrap_or_default();
+    let planning_decisions = match fetch_stage_decisions(&state.pool, org_id, story_id, "planning").await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(%story_id, %project_id, %e, "failed to fetch planning decisions for planning");
+            return;
+        }
+    };
 
     let (system_prompt, prompt) = prompts::planning::build_planning_prompt(
         &story_context,
@@ -745,6 +774,8 @@ pub async fn dispatch_planning(state: &AppState, org_id: Uuid, project_id: Uuid,
         "",
         &grooming_decisions,
         &planning_decisions,
+        detail_text,
+        max_questions,
     );
 
     match session_repo::create_session(
@@ -783,13 +814,21 @@ async fn dispatch_description_refinement(
     stage: &str,
 ) {
     tracing::info!(%story_id, %project_id, stage, "dispatching description refinement");
-    let (story_title, description) = fetch_story_description(&state.pool, org_id, story_id)
-        .await
-        .unwrap_or_default();
+    let (story_title, description) = match fetch_story_description(&state.pool, org_id, story_id).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(%story_id, %project_id, stage, %e, "failed to fetch story description for refinement");
+            return;
+        }
+    };
 
-    let decisions = fetch_stage_decisions(&state.pool, org_id, story_id, stage)
-        .await
-        .unwrap_or_default();
+    let decisions = match fetch_stage_decisions(&state.pool, org_id, story_id, stage).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(%story_id, %project_id, stage, %e, "failed to fetch stage decisions for refinement");
+            return;
+        }
+    };
 
     let (system_prompt, prompt) = prompts::description_refinement::build_refinement_prompt(
         &story_title,
@@ -836,17 +875,29 @@ pub async fn dispatch_decomposition(
     story_id: Uuid,
 ) {
     tracing::info!(%story_id, %project_id, "dispatching task decomposition");
-    let (story_title, description) = fetch_story_description(&state.pool, org_id, story_id)
-        .await
-        .unwrap_or_default();
+    let (story_title, description) = match fetch_story_description(&state.pool, org_id, story_id).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(%story_id, %project_id, %e, "failed to fetch story description for decomposition");
+            return;
+        }
+    };
     let story_context = fmt_story_context(&story_title, &description);
 
-    let grooming_decisions = fetch_stage_decisions(&state.pool, org_id, story_id, "grooming")
-        .await
-        .unwrap_or_default();
-    let planning_decisions = fetch_stage_decisions(&state.pool, org_id, story_id, "planning")
-        .await
-        .unwrap_or_default();
+    let grooming_decisions = match fetch_stage_decisions(&state.pool, org_id, story_id, "grooming").await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(%story_id, %project_id, %e, "failed to fetch grooming decisions for decomposition");
+            return;
+        }
+    };
+    let planning_decisions = match fetch_stage_decisions(&state.pool, org_id, story_id, "planning").await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(%story_id, %project_id, %e, "failed to fetch planning decisions for decomposition");
+            return;
+        }
+    };
 
     let (system_prompt, prompt) = prompts::task_decomposition::build_decomposition_prompt(
         &story_context,
@@ -919,23 +970,39 @@ pub async fn dispatch_implementation(
 ) {
     tracing::info!(%task_id, %story_id, %project_id, "dispatching implementation");
 
-    let qa_config = fetch_project_qa_config(&state.pool, project_id)
-        .await
-        .unwrap_or_default();
+    let qa_config = match fetch_project_qa_config(&state.pool, project_id).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(%task_id, %story_id, %project_id, %e, "failed to fetch qa config for implementation");
+            return;
+        }
+    };
     let (model_short, _, _) = stage_config(&qa_config, "implementation");
     let model = prompts::models::resolve_model_id(&model_short);
 
-    let knowledge = fetch_knowledge(&state.pool, org_id, project_id)
-        .await
-        .unwrap_or_default();
+    let knowledge = match fetch_knowledge(&state.pool, org_id, project_id).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(%task_id, %story_id, %project_id, %e, "failed to fetch knowledge for implementation");
+            return;
+        }
+    };
 
-    let story_decisions = fetch_all_story_decisions(&state.pool, org_id, story_id)
-        .await
-        .unwrap_or_default();
+    let story_decisions = match fetch_all_story_decisions(&state.pool, org_id, story_id).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(%task_id, %story_id, %project_id, %e, "failed to fetch story decisions for implementation");
+            return;
+        }
+    };
 
-    let task_description = fetch_task_description(&state.pool, org_id, task_id)
-        .await
-        .unwrap_or_default();
+    let task_description = match fetch_task_description(&state.pool, org_id, task_id).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(%task_id, %story_id, %project_id, %e, "failed to fetch task description for implementation");
+            return;
+        }
+    };
 
     let (system_prompt, prompt) = prompts::implementation::build_implementation_prompt(
         &task_description,
@@ -988,22 +1055,38 @@ async fn dispatch_next_grooming_round(
         }
     };
 
-    let qa_config = fetch_project_qa_config(&state.pool, project_id)
-        .await
-        .unwrap_or_default();
+    let qa_config = match fetch_project_qa_config(&state.pool, project_id).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(%story_id, %project_id, %e, "failed to fetch qa config for next grooming round");
+            return;
+        }
+    };
 
-    let (story_title, description) = fetch_story_description(&state.pool, org_id, story_id)
-        .await
-        .unwrap_or_default();
+    let (story_title, description) = match fetch_story_description(&state.pool, org_id, story_id).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(%story_id, %project_id, %e, "failed to fetch story description for next grooming round");
+            return;
+        }
+    };
     let story_context = fmt_story_context(&story_title, &description);
 
-    let knowledge = fetch_knowledge(&state.pool, org_id, project_id)
-        .await
-        .unwrap_or_default();
+    let knowledge = match fetch_knowledge(&state.pool, org_id, project_id).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(%story_id, %project_id, %e, "failed to fetch knowledge for next grooming round");
+            return;
+        }
+    };
 
-    let decisions = fetch_stage_decisions(&state.pool, org_id, story_id, "grooming")
-        .await
-        .unwrap_or_default();
+    let decisions = match fetch_stage_decisions(&state.pool, org_id, story_id, "grooming").await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(%story_id, %project_id, %e, "failed to fetch grooming decisions for next grooming round");
+            return;
+        }
+    };
 
     // Only dispatch role 0 (BA); the chain continues in on_qa_result.
     let enabled_roles = parse_enabled_grooming_roles(&qa_config);
@@ -1104,13 +1187,19 @@ async fn find_connected_key(
     registry: &dyn ConnectionRegistry,
     project_id: Uuid,
 ) -> Option<Uuid> {
-    let rows: Vec<(Uuid,)> = sqlx::query_as(
+    let rows: Vec<(Uuid,)> = match sqlx::query_as(
         "SELECT id FROM container_api_keys WHERE project_id = $1 AND revoked_at IS NULL",
     )
     .bind(project_id)
     .fetch_all(pool)
     .await
-    .unwrap_or_default();
+    {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(%project_id, %e, "failed to fetch container api keys");
+            return None;
+        }
+    };
 
     let ids: Vec<Uuid> = rows.into_iter().map(|(id,)| id).collect();
     find_key_in_registry(&ids, registry)
@@ -1315,18 +1404,30 @@ async fn dispatch_next_grooming_role(
     let detail_text = prompts::detail_levels::detail_level_threshold(detail_level);
     let model = prompts::models::resolve_model_id(&model_short);
 
-    let (story_title, description) = fetch_story_description(&state.pool, org_id, story_id)
-        .await
-        .unwrap_or_default();
+    let (story_title, description) = match fetch_story_description(&state.pool, org_id, story_id).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(%story_id, role = role.id, %e, "failed to fetch story description for sequential grooming role");
+            return;
+        }
+    };
     let story_context = fmt_story_context(&story_title, &description);
 
-    let knowledge = fetch_knowledge(&state.pool, org_id, project_id)
-        .await
-        .unwrap_or_default();
+    let knowledge = match fetch_knowledge(&state.pool, org_id, project_id).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(%story_id, role = role.id, %e, "failed to fetch knowledge for sequential grooming role");
+            return;
+        }
+    };
 
-    let decisions = fetch_stage_decisions(&state.pool, org_id, story_id, "grooming")
-        .await
-        .unwrap_or_default();
+    let decisions = match fetch_stage_decisions(&state.pool, org_id, story_id, "grooming").await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(%story_id, role = role.id, %e, "failed to fetch grooming decisions for sequential grooming role");
+            return;
+        }
+    };
 
     let acc: Vec<prompts::grooming::AccumulatedQuestion<'_>> = accumulated_questions
         .iter()

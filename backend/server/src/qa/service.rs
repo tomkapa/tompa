@@ -123,6 +123,7 @@ pub async fn submit_answer(
     question.selected_answer_text = Some(req.answer_text);
     question.answered_by = Some(user_id);
     question.answered_at = Some(chrono::Utc::now());
+    question.assigned_to = Some(user_id);
 
     let new_content = serde_json::to_value(&content)
         .map_err(|e| ApiError::Internal(anyhow::anyhow!("Failed to serialize QA content: {e}")))?;

@@ -1,5 +1,6 @@
 import * as React from 'react'
-import { Bold, Italic, Heading2, List, ListOrdered, Code, Pencil } from 'lucide-react'
+import ReactDOM from 'react-dom'
+import { Bold, Italic, Heading2, List, ListOrdered, Code, Pencil, Maximize2, Minimize2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MarkdownViewer } from '@/components/ui/markdown-viewer'
 import { Textarea } from '@/components/ui/textarea'
@@ -87,10 +88,10 @@ function Toolbar({ textareaRef, draft, setDraft }: ToolbarProps) {
 
   return (
     <div className="flex items-center gap-0.5">
-      <ToolbarBtn title="Bold (Ctrl+B)" onClick={() => act((el) => applyWrap(el, draft, '**', '**', 'bold text', setDraft))}>
+      <ToolbarBtn title="Bold" onClick={() => act((el) => applyWrap(el, draft, '**', '**', 'bold text', setDraft))}>
         <Bold className="h-3.5 w-3.5" />
       </ToolbarBtn>
-      <ToolbarBtn title="Italic (Ctrl+I)" onClick={() => act((el) => applyWrap(el, draft, '_', '_', 'italic text', setDraft))}>
+      <ToolbarBtn title="Italic" onClick={() => act((el) => applyWrap(el, draft, '_', '_', 'italic text', setDraft))}>
         <Italic className="h-3.5 w-3.5" />
       </ToolbarBtn>
       <ToolbarSeparator />
@@ -109,6 +110,72 @@ function Toolbar({ textareaRef, draft, setDraft }: ToolbarProps) {
         <Code className="h-3.5 w-3.5" />
       </ToolbarBtn>
     </div>
+  )
+}
+
+// ── Fullscreen overlay ────────────────────────────────────────────────────────
+
+interface FullscreenOverlayProps {
+  content: string
+  placeholder?: string
+  readOnly: boolean
+  onClose: () => void
+  onEdit: () => void
+}
+
+function FullscreenOverlay({ content, placeholder, readOnly, onClose, onEdit }: FullscreenOverlayProps) {
+  React.useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const isEmpty = !content || !content.trim()
+
+  return ReactDOM.createPortal(
+    <div className="fixed inset-0 z-[60] flex flex-col bg-background/95 backdrop-blur-sm animate-in fade-in-0">
+      {/* Header */}
+      <div className="flex shrink-0 items-center justify-between border-b border-border px-6 py-3">
+        <span className="text-sm font-semibold text-foreground">Description</span>
+        <div className="flex items-center gap-2">
+          {!readOnly && (
+            <Button
+              type="button"
+              variant="secondary"
+              className="h-7 gap-1 px-3 text-xs"
+              onClick={() => { onClose(); onEdit() }}
+              leadingIcon={<Pencil className="h-3 w-3" />}
+            >
+              Edit
+            </Button>
+          )}
+          <button
+            type="button"
+            title="Exit fullscreen (Esc)"
+            onClick={onClose}
+            className="flex h-7 w-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <Minimize2 className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Scrollable document body */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-2xl px-8 py-10">
+          {isEmpty ? (
+            <p className="text-[13px] italic text-muted-foreground/60">
+              {placeholder ?? 'No description.'}
+            </p>
+          ) : (
+            <MarkdownViewer content={content} />
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -133,6 +200,7 @@ export function MarkdownEditor({
 }: MarkdownEditorProps) {
   const [editing, setEditing] = React.useState(false)
   const [preview, setPreview] = React.useState(false)
+  const [fullscreen, setFullscreen] = React.useState(false)
   const [draft, setDraft] = React.useState(value)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
 
@@ -163,26 +231,48 @@ export function MarkdownEditor({
   if (!editing) {
     const isEmpty = !value || !value.trim()
     return (
-      <div className={cn('group relative', className)}>
-        {isEmpty ? (
-          <p className="text-[13px] italic text-muted-foreground/60">
-            {placeholder ?? 'No description.'}
-          </p>
-        ) : (
-          <MarkdownViewer content={value} />
+      <>
+        {fullscreen && (
+          <FullscreenOverlay
+            content={value}
+            placeholder={placeholder}
+            readOnly={readOnly}
+            onClose={() => setFullscreen(false)}
+            onEdit={startEditing}
+          />
         )}
-        {!readOnly && (
-          <Button
-            type="button"
-            variant="ghost"
-            className="absolute right-0 top-0 h-7 gap-1 px-2 text-[11px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
-            onClick={startEditing}
-            leadingIcon={<Pencil className="h-3 w-3" />}
-          >
-            Edit
-          </Button>
-        )}
-      </div>
+        <div className={cn('group relative', className)}>
+          {isEmpty ? (
+            <p className="text-[13px] italic text-muted-foreground/60">
+              {placeholder ?? 'No description.'}
+            </p>
+          ) : (
+            <MarkdownViewer content={value} />
+          )}
+          {/* Action buttons — visible on hover */}
+          <div className="absolute right-0 top-0 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+            <button
+              type="button"
+              title="Fullscreen"
+              onClick={() => setFullscreen(true)}
+              className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <Maximize2 className="h-3 w-3" />
+            </button>
+            {!readOnly && (
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-7 gap-1 px-2 text-[11px] text-muted-foreground"
+                onClick={startEditing}
+                leadingIcon={<Pencil className="h-3 w-3" />}
+              >
+                Edit
+              </Button>
+            )}
+          </div>
+        </div>
+      </>
     )
   }
 
@@ -191,7 +281,6 @@ export function MarkdownEditor({
     <div className={cn('flex flex-col overflow-hidden rounded-[16px] border border-primary/50', className)}>
       {/* Top bar: Edit/Preview tabs + toolbar */}
       <div className="flex items-center gap-3 border-b border-border bg-muted/30 px-3 py-1.5">
-        {/* Tabs */}
         <div className="flex items-center rounded-md bg-muted p-0.5">
           <button
             type="button"
@@ -219,7 +308,6 @@ export function MarkdownEditor({
           </button>
         </div>
 
-        {/* Toolbar — only visible in edit tab */}
         {!preview && (
           <>
             <div className="h-4 w-px bg-border" />
