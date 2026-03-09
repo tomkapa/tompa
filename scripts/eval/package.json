@@ -1,0 +1,12 @@
+{
+  "name": "tompa-eval",
+  "type": "module",
+  "scripts": {
+    "eval": "bun run run.ts",
+    "eval:watch": "bun run run.ts --watch"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.36.0",
+    "chokidar": "^4.0.0"
+  }
+}

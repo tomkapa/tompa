@@ -42,25 +42,82 @@ interface MermaidBlockProps {
 }
 
 function MermaidBlock({ code }: MermaidBlockProps) {
-  const containerRef = React.useRef<HTMLDivElement>(null)
+  const [svg, setSvg] = React.useState<string | null>(null)
   const [error, setError] = React.useState(false)
+  const [expanded, setExpanded] = React.useState(false)
 
   React.useEffect(() => {
     initialiseMermaid()
     const id = `mermaid-${crypto.randomUUID()}`
     void mermaid
       .render(id, code)
-      .then(({ svg }) => {
-        if (containerRef.current) {
-          containerRef.current.innerHTML = svg
-          setError(false)
-        }
+      .then(({ svg: rendered }) => {
+        setSvg(rendered)
+        setError(false)
       })
       .catch((err: unknown) => {
         console.error('[MermaidBlock]', { code }, err)
         setError(true)
       })
   }, [code])
+
+  // zoom/pan state for expanded modal
+  const [scale, setScale] = React.useState(1)
+  const [offset, setOffset] = React.useState({ x: 0, y: 0 })
+  const dragRef = React.useRef<{ startX: number; startY: number; ox: number; oy: number } | null>(null)
+  const canvasRef = React.useRef<HTMLDivElement>(null)
+  const svgWrapRef = React.useRef<HTMLDivElement>(null)
+
+  // compute fit-to-screen scale after the modal renders the SVG
+  const fitToScreen = React.useCallback(() => {
+    const canvas = canvasRef.current
+    const wrap = svgWrapRef.current
+    if (!canvas || !wrap) return
+    const svgEl = wrap.querySelector('svg')
+    if (!svgEl) return
+    const svgW = svgEl.getBoundingClientRect().width
+    const svgH = svgEl.getBoundingClientRect().height
+    const { width: cW, height: cH } = canvas.getBoundingClientRect()
+    const padding = 48
+    const fit = Math.min((cW - padding) / svgW, (cH - padding) / svgH)
+    setScale(fit)
+    setOffset({ x: 0, y: 0 })
+  }, [])
+
+  React.useEffect(() => {
+    if (!expanded) return
+    // fit after paint so the SVG has dimensions
+    const raf = requestAnimationFrame(fitToScreen)
+
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setExpanded(false)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      cancelAnimationFrame(raf)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [expanded, fitToScreen])
+
+  function onWheel(e: React.WheelEvent) {
+    e.preventDefault()
+    setScale(s => Math.min(10, Math.max(0.2, s - e.deltaY * 0.001)))
+  }
+
+  function onMouseDown(e: React.MouseEvent) {
+    dragRef.current = { startX: e.clientX, startY: e.clientY, ox: offset.x, oy: offset.y }
+  }
+
+  function onMouseMove(e: React.MouseEvent) {
+    if (!dragRef.current) return
+    const dx = e.clientX - dragRef.current.startX
+    const dy = e.clientY - dragRef.current.startY
+    setOffset({ x: dragRef.current.ox + dx, y: dragRef.current.oy + dy })
+  }
+
+  function onMouseUp() {
+    dragRef.current = null
+  }
 
   if (error) {
     return (
@@ -70,7 +127,84 @@ function MermaidBlock({ code }: MermaidBlockProps) {
     )
   }
 
-  return <div ref={containerRef} className="mermaid-block" />
+  return (
+    <>
+      {expanded &&
+        ReactDOM.createPortal(
+          <div className="fixed inset-0 z-[60] flex flex-col bg-background/95 backdrop-blur-sm animate-in fade-in-0">
+            <div className="flex shrink-0 items-center justify-between border-b border-border px-6 py-3">
+              <span className="text-sm font-semibold text-foreground">
+                Diagram
+                <span className="ml-3 text-xs font-normal text-muted-foreground">scroll to zoom · drag to pan</span>
+              </span>
+              <button
+                type="button"
+                title="Exit fullscreen (Esc)"
+                onClick={() => setExpanded(false)}
+                className="flex h-7 w-7 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <Minimize2 className="h-4 w-4" />
+              </button>
+            </div>
+            {/* zoom/pan canvas */}
+            <div
+              ref={canvasRef}
+              className="relative flex-1 overflow-hidden cursor-grab active:cursor-grabbing select-none"
+              onWheel={onWheel}
+              onMouseDown={onMouseDown}
+              onMouseMove={onMouseMove}
+              onMouseUp={onMouseUp}
+              onMouseLeave={onMouseUp}
+            >
+              <div
+                ref={svgWrapRef}
+                style={{
+                  transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px)) scale(${scale})`,
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  transformOrigin: 'center center',
+                }}
+              >
+                {svg && (
+                  <div
+                    // eslint-disable-next-line react/no-danger
+                    dangerouslySetInnerHTML={{ __html: svg }}
+                  />
+                )}
+              </div>
+              {/* fit-to-screen reset */}
+              <button
+                type="button"
+                title="Reset zoom"
+                onClick={fitToScreen}
+                className="absolute bottom-4 right-4 rounded border border-border bg-background px-2 py-1 text-xs text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground"
+              >
+                Fit
+              </button>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      <div className="group relative">
+        {svg && (
+          // eslint-disable-next-line react/no-danger
+          <div dangerouslySetInnerHTML={{ __html: svg }} className="mermaid-block" />
+        )}
+        {svg && (
+          <button
+            type="button"
+            title="Expand diagram"
+            onClick={() => setExpanded(true)}
+            className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:bg-accent hover:text-foreground"
+          >
+            <Maximize2 className="h-3 w-3" />
+          </button>
+        )}
+      </div>
+    </>
+  )
 }
 
 // ── MarkdownViewer ────────────────────────────────────────────────────────────

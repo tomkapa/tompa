@@ -46,13 +46,14 @@ async fn fetch_prompt_context(
     org_id: Uuid,
     project_id: Uuid,
     story_description: &str,
+    exclude_story_id: Option<Uuid>,
 ) -> Result<PromptContext, ApiError> {
     let knowledge = fetch_knowledge(pool, org_id, project_id).await?;
     let profile = pp_service::fetch_project_profile(pool, org_id, project_id).await?;
 
     // Extract simple keyword tags from the story description for FTS
     let tags: Vec<String> = extract_search_tags(story_description);
-    let pattern_rows = dp_repo::fetch_relevant_patterns(pool, org_id, project_id, story_description, &tags).await?;
+    let pattern_rows = dp_repo::fetch_relevant_patterns(pool, org_id, project_id, story_description, &tags, exclude_story_id).await?;
     let patterns = pattern_rows
         .into_iter()
         .map(|r| DecisionPatternResponse {
@@ -290,6 +291,7 @@ async fn on_qa_result(
             })?;
         tx.commit().await?;
 
+        let round_number = round.round_number;
         let mut content: QaContent = serde_json::from_value(round.content).map_err(|e| {
             ApiError::Internal(anyhow::anyhow!("failed to parse round content: {e}"))
         })?;
@@ -355,6 +357,7 @@ async fn on_qa_result(
                 next_role,
                 &content.questions,
                 &qa_config,
+                round_number,
             )
             .await;
         } else {
@@ -913,8 +916,8 @@ pub async fn dispatch_grooming(
 ) {
     tracing::info!(%story_id, %project_id, "dispatching grooming (sequential roles)");
 
-    let round_id = match create_shared_grooming_round(&state.pool, org_id, story_id).await {
-        Ok(id) => id,
+    let (round_id, round_number) = match create_shared_grooming_round(&state.pool, org_id, story_id).await {
+        Ok(v) => v,
         Err(e) => {
             tracing::error!(%story_id, %e, "failed to create shared grooming round");
             return;
@@ -929,7 +932,7 @@ pub async fn dispatch_grooming(
         }
     };
 
-    let ctx = match fetch_prompt_context(&state.pool, org_id, project_id, description).await {
+    let ctx = match fetch_prompt_context(&state.pool, org_id, project_id, description, Some(story_id)).await {
         Ok(v) => v,
         Err(e) => {
             tracing::error!(%story_id, %project_id, %e, "failed to fetch prompt context for grooming");
@@ -949,8 +952,9 @@ pub async fn dispatch_grooming(
             return;
         }
     };
-    let (model_short, detail_level, max_questions) = grooming_role_config(&qa_config, role.id);
+    let (model_short, detail_level, max_questions) = grooming_role_config(&qa_config, &role.id);
     let detail_text = prompts::detail_levels::detail_level_threshold(detail_level);
+    let convergence_text = prompts::detail_levels::convergence_guidance(detail_level, round_number);
     let model = prompts::models::resolve_model_id(&model_short);
 
     let (system_prompt, base_prompt) = prompts::grooming::build_grooming_prompt(
@@ -961,6 +965,9 @@ pub async fn dispatch_grooming(
         &[],
         detail_text,
         max_questions,
+        round_number,
+        0, // no prior decisions on first round
+        &convergence_text,
     );
     let prompt = format!("{base_prompt}{}", build_context_sections(&ctx));
 
@@ -971,7 +978,7 @@ pub async fn dispatch_grooming(
         Some(story_id),
         None,
         "grooming",
-        Some(role.id),
+        Some(role.id.as_str()),
         Some(round_id),
     )
     .await
@@ -988,7 +995,7 @@ pub async fn dispatch_grooming(
             .await;
         }
         Err(e) => {
-            tracing::error!(%story_id, role = role.id, %e, "failed to create grooming session")
+            tracing::error!(%story_id, role = %role.id, %e, "failed to create grooming session")
         }
     }
 }
@@ -1017,7 +1024,7 @@ pub async fn dispatch_planning(state: &AppState, org_id: Uuid, project_id: Uuid,
     };
     let story_context = fmt_story_context(&story_title, &description);
 
-    let ctx = match fetch_prompt_context(&state.pool, org_id, project_id, &story_context).await {
+    let ctx = match fetch_prompt_context(&state.pool, org_id, project_id, &story_context, Some(story_id)).await {
         Ok(v) => v,
         Err(e) => {
             tracing::error!(%story_id, %project_id, %e, "failed to fetch prompt context for planning");
@@ -1262,7 +1269,7 @@ pub async fn dispatch_implementation(
         }
     };
 
-    let ctx = match fetch_prompt_context(&state.pool, org_id, project_id, &task_description).await {
+    let ctx = match fetch_prompt_context(&state.pool, org_id, project_id, &task_description, Some(story_id)).await {
         Ok(v) => v,
         Err(e) => {
             tracing::error!(%task_id, %story_id, %project_id, %e, "failed to fetch prompt context for implementation");
@@ -1322,8 +1329,8 @@ async fn dispatch_next_grooming_round(
 ) {
     tracing::info!(%story_id, %project_id, "dispatching next grooming round (sequential roles)");
 
-    let round_id = match create_shared_grooming_round(&state.pool, org_id, story_id).await {
-        Ok(id) => id,
+    let (round_id, round_number) = match create_shared_grooming_round(&state.pool, org_id, story_id).await {
+        Ok(v) => v,
         Err(e) => {
             tracing::error!(%story_id, %e, "failed to create shared grooming round");
             return;
@@ -1347,7 +1354,7 @@ async fn dispatch_next_grooming_round(
     };
     let story_context = fmt_story_context(&story_title, &description);
 
-    let ctx = match fetch_prompt_context(&state.pool, org_id, project_id, &story_context).await {
+    let ctx = match fetch_prompt_context(&state.pool, org_id, project_id, &story_context, Some(story_id)).await {
         Ok(v) => v,
         Err(e) => {
             tracing::error!(%story_id, %project_id, %e, "failed to fetch prompt context for next grooming round");
@@ -1375,8 +1382,9 @@ async fn dispatch_next_grooming_round(
             return;
         }
     };
-    let (model_short, detail_level, max_questions) = grooming_role_config(&qa_config, role.id);
+    let (model_short, detail_level, max_questions) = grooming_role_config(&qa_config, &role.id);
     let detail_text = prompts::detail_levels::detail_level_threshold(detail_level);
+    let convergence_text = prompts::detail_levels::convergence_guidance(detail_level, round_number);
     let model = prompts::models::resolve_model_id(&model_short);
 
     let (system_prompt, base_prompt) = prompts::grooming::build_grooming_prompt(
@@ -1387,6 +1395,9 @@ async fn dispatch_next_grooming_round(
         &decisions,
         detail_text,
         max_questions,
+        round_number,
+        decisions.len(),
+        &convergence_text,
     );
     let prompt = format!("{base_prompt}{}", build_context_sections(&ctx));
 
@@ -1397,7 +1408,7 @@ async fn dispatch_next_grooming_round(
         Some(story_id),
         None,
         "grooming",
-        Some(role.id),
+        Some(role.id.as_str()),
         Some(round_id),
     )
     .await
@@ -1414,7 +1425,7 @@ async fn dispatch_next_grooming_round(
             .await;
         }
         Err(e) => {
-            tracing::error!(%story_id, role = role.id, %e, "failed to create next grooming session")
+            tracing::error!(%story_id, role = %role.id, %e, "failed to create next grooming session")
         }
     }
 }
@@ -1497,7 +1508,7 @@ async fn fetch_project_qa_config(
     Ok(row.0)
 }
 
-/// Filter `GROOMING_ROLES` to those present in `qa_config.grooming`, preserving canonical order.
+/// Filter grooming roles to those present in `qa_config.grooming`, preserving canonical order.
 fn parse_enabled_grooming_roles(
     qa_config: &serde_json::Value,
 ) -> Vec<&'static prompts::grooming::GroomingRole> {
@@ -1505,9 +1516,10 @@ fn parse_enabled_grooming_roles(
     let Some(grooming) = grooming else {
         return vec![];
     };
-    prompts::grooming::GROOMING_ROLES
+    prompts::grooming::GROOMING_CONFIG
+        .roles
         .iter()
-        .filter(|role| grooming.contains_key(role.id))
+        .filter(|role| grooming.contains_key(role.id.as_str()))
         .collect()
 }
 
@@ -1676,26 +1688,28 @@ async fn dispatch_next_grooming_role(
     role: &'static prompts::grooming::GroomingRole,
     accumulated_questions: &[QaQuestion],
     qa_config: &serde_json::Value,
+    round_number: i32,
 ) {
-    tracing::info!(%story_id, role = role.id, "dispatching sequential grooming role");
+    tracing::info!(%story_id, role = %role.id, "dispatching sequential grooming role");
 
-    let (model_short, detail_level, max_questions) = grooming_role_config(qa_config, role.id);
+    let (model_short, detail_level, max_questions) = grooming_role_config(qa_config, &role.id);
     let detail_text = prompts::detail_levels::detail_level_threshold(detail_level);
+    let convergence_text = prompts::detail_levels::convergence_guidance(detail_level, round_number);
     let model = prompts::models::resolve_model_id(&model_short);
 
     let (story_title, description) = match fetch_story_description(&state.pool, org_id, story_id).await {
         Ok(v) => v,
         Err(e) => {
-            tracing::error!(%story_id, role = role.id, %e, "failed to fetch story description for sequential grooming role");
+            tracing::error!(%story_id, role = %role.id, %e, "failed to fetch story description for sequential grooming role");
             return;
         }
     };
     let story_context = fmt_story_context(&story_title, &description);
 
-    let ctx = match fetch_prompt_context(&state.pool, org_id, project_id, &story_context).await {
+    let ctx = match fetch_prompt_context(&state.pool, org_id, project_id, &story_context, Some(story_id)).await {
         Ok(v) => v,
         Err(e) => {
-            tracing::error!(%story_id, role = role.id, %e, "failed to fetch prompt context for sequential grooming role");
+            tracing::error!(%story_id, role = %role.id, %e, "failed to fetch prompt context for sequential grooming role");
             return;
         }
     };
@@ -1703,7 +1717,7 @@ async fn dispatch_next_grooming_role(
     let decisions = match fetch_stage_decisions(&state.pool, org_id, story_id, "grooming").await {
         Ok(v) => v,
         Err(e) => {
-            tracing::error!(%story_id, role = role.id, %e, "failed to fetch grooming decisions for sequential grooming role");
+            tracing::error!(%story_id, role = %role.id, %e, "failed to fetch grooming decisions for sequential grooming role");
             return;
         }
     };
@@ -1733,6 +1747,9 @@ async fn dispatch_next_grooming_role(
         &acc,
         detail_text,
         max_questions,
+        round_number,
+        decisions.len(),
+        &convergence_text,
     );
     let prompt = format!("{base_prompt}{}", build_context_sections(&ctx));
 
@@ -1743,7 +1760,7 @@ async fn dispatch_next_grooming_role(
         Some(story_id),
         None,
         "grooming",
-        Some(role.id),
+        Some(role.id.as_str()),
         Some(qa_round_id),
     )
     .await
@@ -1760,7 +1777,7 @@ async fn dispatch_next_grooming_role(
             .await;
         }
         Err(e) => {
-            tracing::error!(%story_id, role = role.id, %e, "failed to create sequential grooming session")
+            tracing::error!(%story_id, role = %role.id, %e, "failed to create sequential grooming session")
         }
     }
 }
@@ -2136,17 +2153,18 @@ async fn set_round_applied_patterns(
 }
 
 /// Pre-create an empty shared grooming round that all parallel roles will
-/// append their questions into.  Returns the new round's `id`.
+/// append their questions into.  Returns `(round_id, round_number)`.
 async fn create_shared_grooming_round(
     pool: &sqlx::PgPool,
     org_id: Uuid,
     story_id: Uuid,
-) -> Result<Uuid, ApiError> {
+) -> Result<(Uuid, i32), ApiError> {
     let mut tx = OrgTx::begin(pool, org_id).await?;
 
     let max_round = qa_repo::get_max_round_number(&mut tx, story_id, None, "grooming")
         .await?
         .unwrap_or(0);
+    let round_number = max_round + 1;
 
     let empty_content = serde_json::json!({ "questions": [], "course_correction": null });
     let row = qa_repo::create_round(
@@ -2155,13 +2173,13 @@ async fn create_shared_grooming_round(
         story_id,
         None,
         "grooming",
-        max_round + 1,
+        round_number,
         &empty_content,
     )
     .await?;
 
     tx.commit().await?;
-    Ok(row.id)
+    Ok((row.id, round_number))
 }
 
 // ── JSON normalisation ────────────────────────────────────────────────────────

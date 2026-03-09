@@ -3,7 +3,7 @@ export
 
 AGENT_IMAGE ?= tompa-agent
 
-.PHONY: run-backend run-agent build-agent run-frontend migrate backend-check frontend-check api-contract-update help
+.PHONY: run-backend run-agent build-agent run-frontend migrate backend-check frontend-check api-contract-update eval-loop help
 
 help:
 	@echo "Usage: make [target]"
@@ -11,12 +11,14 @@ help:
 	@echo "  run-backend   - Start backend server (requires .env)"
 	@echo "  build-agent   - Build agent Docker image"
 	@echo "  run-agent     - Build and run agent in Docker (requires .env)"
+	@echo "                  Mounts test-fixtures/taskly as /workspace (CWD)"
 	@echo "                  Note: set AGENT_SERVER_URL=ws://host.docker.internal:3000 in .env"
 	@echo "  run-frontend  - Start frontend dev server"
 	@echo "  migrate       - Run database migrations"
 	@echo "  backend-check - Format, clippy, test backend"
 	@echo "  frontend-check - Typecheck, lint, test frontend"
 	@echo "  api-contract-update - Regenerate OpenAPI spec and TypeScript API client"
+	@echo "  eval-loop           - Watch prompts/roles/*.txt and re-eval on change (requires ANTHROPIC_API_KEY)"
 
 run-backend:
 	@set -a && [ -f .env ] && . ./.env && set +a && cd backend && cargo run --bin server
@@ -31,6 +33,8 @@ run-agent: build-agent
 		--add-host=host.docker.internal:host-gateway \
 		-p 3001:3001 \
 		-v $(CURDIR)/agent-claude:/root/.claude \
+		-v $(CURDIR)/test-fixtures/taskly:/workspace \
+		-w /workspace \
 		$(AGENT_IMAGE)
 
 run-frontend:
@@ -52,3 +56,6 @@ frontend-check:
 
 api-contract-update:
 	cd frontend && SQLX_OFFLINE=true bun run generate-api
+
+eval-loop:
+	cd scripts/eval && bun install --silent && bun run run.ts --watch

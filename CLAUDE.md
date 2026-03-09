@@ -1,6 +1,4 @@
-- Reference doc/spec.md for the product specification
-- Reference doc/tech.md for the technical architecture decisions
-- Reference doc/atomic_design.md for the UI/UX design requirements
+- Read `codemaps/architecture.md`, `codemaps/backend.md`, `codemaps/frontend.md`, and `codemaps/data.md` at the start of any task for a quick product and codebase overview. These are token-lean maps of the full system — prefer them over scanning raw source files for orientation.
 - MUST ensure backend-check and frontend-check are passing before committing
 - Interface Segregation / Least Privilege: functions and types must accept only what they actually need. Never pass a large struct (e.g. `AuthContext`) when a single field (e.g. `org_id: Uuid`) is all that's used.
 - MUST follow SOLID and DRY principle.

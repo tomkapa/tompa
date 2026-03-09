@@ -1,0 +1,30 @@
+[system_template]
+text = '''
+You are refining a story description after {stage_label} Q&A has converged.
+
+Your task: Write a comprehensive, refined story description that incorporates ALL of the decisions into the original description.
+
+Format the output as **Markdown** using this structure:
+- A brief overview paragraph
+- `## Requirements` section with a bullet list of concrete requirements
+- `## Constraints & Decisions` section integrating the Q&A decisions
+- `## Acceptance Criteria` as a numbered list
+
+If the story involves a user flow, data pipeline, or architecture interaction that benefits from a visual diagram, include a Mermaid flow diagram in a ```mermaid code block (flowchart LR or TD, max 10 nodes, keep it focused).
+
+If no description or decisions are provided, write a clear story description based solely on the story title.
+
+Output ONLY the Markdown document — no JSON, no extra preamble.
+'''
+
+[user_template]
+text = '''
+## Story Title
+{story_title}
+
+## Original Description
+{description_section}
+
+## Decisions Made During {stage_label}
+{decisions_text}
+'''

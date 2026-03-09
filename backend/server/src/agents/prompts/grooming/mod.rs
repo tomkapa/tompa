@@ -1,55 +1,33 @@
-pub mod business;
-pub mod design;
-pub mod development;
-pub mod marketing;
-pub mod security;
+use std::sync::LazyLock;
 
 use shared::enums::KnowledgeCategory;
 use shared::types::{KnowledgeEntry, QaDecision};
 
+#[derive(Debug, serde::Deserialize)]
 pub struct GroomingRole {
-    pub id: &'static str,
-    pub title: &'static str,
-    pub domain: &'static str,
-    pub instructions: &'static str,
+    pub id: String,
+    pub title: String,
+    pub domain: String,
+    pub instructions: String,
 }
 
-/// Roles are called sequentially in this order:
-/// business first (sets scope), then dev/design (technical), then security/marketing (cross-cutting).
-pub const GROOMING_ROLES: &[GroomingRole] = &[
-    GroomingRole {
-        id: "business_analyst",
-        title: business::ROLE_TITLE,
-        domain: business::DOMAIN,
-        instructions: business::INSTRUCTIONS,
-    },
-    GroomingRole {
-        id: "developer",
-        title: development::ROLE_TITLE,
-        domain: development::DOMAIN,
-        instructions: development::INSTRUCTIONS,
-    },
-    GroomingRole {
-        id: "ux_designer",
-        title: design::ROLE_TITLE,
-        domain: design::DOMAIN,
-        instructions: design::INSTRUCTIONS,
-    },
-    GroomingRole {
-        id: "security_engineer",
-        title: security::ROLE_TITLE,
-        domain: security::DOMAIN,
-        instructions: security::INSTRUCTIONS,
-    },
-    GroomingRole {
-        id: "marketing",
-        title: marketing::ROLE_TITLE,
-        domain: marketing::DOMAIN,
-        instructions: marketing::INSTRUCTIONS,
-    },
-];
+#[derive(serde::Deserialize)]
+pub struct GroomingConfig {
+    pub system_template: super::TemplateConfig,
+    pub sequential_system_template: super::TemplateConfig,
+    pub user_template: super::TemplateConfig,
+    pub sequential_user_template: super::TemplateConfig,
+    pub roles: Vec<GroomingRole>,
+}
 
-/// Returns `(system_prompt, prompt)`.
+/// All grooming prompt templates and role configs, loaded once from TOML.
+/// Edit `roles/grooming.toml` to change prompts or role order — no Rust rewrite needed.
+pub static GROOMING_CONFIG: LazyLock<GroomingConfig> = LazyLock::new(|| {
+    toml::from_str(include_str!("../roles/grooming.toml")).expect("roles/grooming.toml is valid TOML")
+});
+
+/// Returns `(system_prompt, user_prompt)`.
+#[allow(clippy::too_many_arguments)]
 pub fn build_grooming_prompt(
     role: &GroomingRole,
     story_description: &str,
@@ -58,96 +36,43 @@ pub fn build_grooming_prompt(
     previous_decisions: &[QaDecision],
     detail_level_text: &str,
     max_questions: i64,
+    round_number: i32,
+    prior_decision_count: usize,
+    convergence_guidance: &str,
 ) -> (String, String) {
-    let conventions = filter_knowledge(knowledge, KnowledgeCategory::Convention);
-    let adrs = filter_knowledge(knowledge, KnowledgeCategory::Adr);
-    let previous = fmt_decisions(previous_decisions);
+    let conventions = super::coalesce(super::filter_knowledge(knowledge, KnowledgeCategory::Convention), "None documented.");
+    let adrs = super::coalesce(super::filter_knowledge(knowledge, KnowledgeCategory::Adr), "None documented.");
+    let codebase = super::coalesce(codebase_context.to_owned(), "No codebase context available.");
+    let previous = super::fmt_decisions(previous_decisions);
+    let max_q = max_questions.to_string();
+    let round = round_number.to_string();
+    let prior = prior_decision_count.to_string();
 
-    let system = format!(
-        r#"You are a {role_title} participating in a software story grooming session.
-
-{instructions}
-
-QUESTION SCOPE: {detail_level_text}
-QUESTION LIMIT: Generate at most {max_questions} questions for your domain. Prioritize by impact — if you have more potential questions than your limit, keep only the most consequential ones.
-
-For each question:
-- "rationale": One sentence explaining why this decision matters and its downstream consequences. Be specific to the story context.
-- "options": Each option is an object with "label" (concise choice), "pros" (2–4 sentences, honest advantages), and "cons" (2–4 sentences, honest disadvantages).
-- "recommended_option_index": Zero-based index of the option you recommend, grounded in the story context.
-
-If all critical decisions for your domain have already been made and you have no further questions, return `{{"questions": []}}`.
-
-Respond ONLY with valid JSON in exactly this format — no other text, no markdown fences:
-{{
-  "questions": [
-    {{
-      "text": "Your question here?",
-      "domain": "{domain}",
-      "rationale": "This decision matters because...",
-      "recommended_option_index": 0,
-      "options": [
-        {{
-          "label": "Option A",
-          "pros": "Advantages of option A.",
-          "cons": "Disadvantages of option A."
-        }},
-        {{
-          "label": "Option B",
-          "pros": "Advantages of option B.",
-          "cons": "Disadvantages of option B."
-        }}
-      ]
-    }}
-  ]
-}}"#,
-        role_title = role.title,
-        instructions = role.instructions,
-        domain = role.domain,
-        detail_level_text = detail_level_text,
-        max_questions = max_questions,
+    let system = super::render(
+        &GROOMING_CONFIG.system_template.text,
+        &[
+            ("role_title", &role.title),
+            ("instructions", role.instructions.trim()),
+            ("domain", &role.domain),
+            ("detail_level_text", detail_level_text),
+            ("max_questions", &max_q),
+            ("round_number", &round),
+            ("prior_decision_count", &prior),
+            ("convergence_guidance", convergence_guidance),
+        ],
     );
-
-    let prompt = format!(
-        r#"## Organization Conventions
-{conventions}
-
-## Architecture Decision Records
-{adrs}
-
-## Codebase Context
-{codebase}
-
-## Story Description
-{story}
-
-## Decisions Already Made
-{previous}
-
-Based on your {role_title} perspective, generate 0–{max_questions} clarifying questions about this story.
-Each question must have 2–5 mutually-exclusive predefined answer options.
-Do NOT ask questions already answered in "Decisions Already Made"."#,
-        conventions = if conventions.is_empty() {
-            "None documented.".into()
-        } else {
-            conventions
-        },
-        adrs = if adrs.is_empty() {
-            "None documented.".into()
-        } else {
-            adrs
-        },
-        codebase = if codebase_context.is_empty() {
-            "No codebase context available.".into()
-        } else {
-            codebase_context.to_owned()
-        },
-        story = story_description,
-        previous = previous,
-        role_title = role.title,
-        max_questions = max_questions,
+    let prompt = super::render(
+        &GROOMING_CONFIG.user_template.text,
+        &[
+            ("conventions", &conventions),
+            ("adrs", &adrs),
+            ("codebase", &codebase),
+            ("story", story_description),
+            ("previous", &previous),
+            ("role_title", &role.title),
+            ("max_questions", &max_q),
+        ],
     );
-
     (system, prompt)
 }
 
@@ -161,12 +86,7 @@ pub struct AccumulatedQuestion<'a> {
     pub options: Vec<(&'a str, &'a str, &'a str)>, // (label, pros, cons)
 }
 
-/// Build the prompt for a role that runs AFTER the first role.
-/// The accumulated questions from previous roles are included so this role can
-/// either augment existing questions (add its perspective to pros/cons) or raise
-/// entirely new questions.
-///
-/// Returns `(system_prompt, prompt)`.
+/// Returns `(system_prompt, user_prompt)` for roles after the first.
 #[allow(clippy::too_many_arguments)]
 pub fn build_sequential_grooming_prompt(
     role: &GroomingRole,
@@ -177,113 +97,45 @@ pub fn build_sequential_grooming_prompt(
     accumulated_questions: &[AccumulatedQuestion<'_>],
     detail_level_text: &str,
     max_questions: i64,
+    round_number: i32,
+    prior_decision_count: usize,
+    convergence_guidance: &str,
 ) -> (String, String) {
-    let conventions = filter_knowledge(knowledge, KnowledgeCategory::Convention);
-    let adrs = filter_knowledge(knowledge, KnowledgeCategory::Adr);
-    let previous = fmt_decisions(previous_decisions);
+    let conventions = super::coalesce(super::filter_knowledge(knowledge, KnowledgeCategory::Convention), "None documented.");
+    let adrs = super::coalesce(super::filter_knowledge(knowledge, KnowledgeCategory::Adr), "None documented.");
+    let codebase = super::coalesce(codebase_context.to_owned(), "No codebase context available.");
+    let previous = super::fmt_decisions(previous_decisions);
     let existing = fmt_accumulated_questions(accumulated_questions);
+    let max_q = max_questions.to_string();
+    let round = round_number.to_string();
+    let prior = prior_decision_count.to_string();
 
-    let system = format!(
-        r#"You are a {role_title} participating in a software story grooming session.
-
-{instructions}
-
-QUESTION SCOPE: {detail_level_text}
-QUESTION LIMIT: Generate at most {max_questions} NEW questions for your domain. Prioritize by impact — keep only the most consequential ones.
-
-Other roles have already raised the questions listed under "Existing Questions".
-Your job is to:
-1. Augment existing questions where you have additional perspective — add your angle to the pros/cons of each relevant option.
-2. Raise NEW questions that are not yet covered by any existing question.
-
-Response format — ONLY valid JSON, no markdown fences:
-{{
-  "augmentations": [
-    {{
-      "question_index": 0,
-      "rationale_addition": "From {domain} perspective: why this decision also matters for your domain.",
-      "options": [
-        {{
-          "pros_addition": "Additional advantage from {domain} view.",
-          "cons_addition": "Additional drawback from {domain} view."
-        }}
-      ]
-    }}
-  ],
-  "questions": [
-    {{
-      "text": "New question not already covered?",
-      "domain": "{domain}",
-      "rationale": "Why this decision matters.",
-      "recommended_option_index": 0,
-      "options": [
-        {{
-          "label": "Option A",
-          "pros": "Advantages.",
-          "cons": "Disadvantages."
-        }}
-      ]
-    }}
-  ]
-}}
-
-Rules:
-- "augmentations" contains one entry per existing question you want to enrich. "question_index" is the 0-based index from "Existing Questions".
-- "options" in an augmentation must have exactly the same count as the original question's options. If you have nothing to add for an option use empty strings.
-- "questions" contains only NEW questions not already covered; each needs 2–5 mutually-exclusive options.
-- Return empty arrays when you have nothing to add: {{"augmentations": [], "questions": []}}."#,
-        role_title = role.title,
-        instructions = role.instructions,
-        domain = role.domain,
-        detail_level_text = detail_level_text,
-        max_questions = max_questions,
+    let system = super::render(
+        &GROOMING_CONFIG.sequential_system_template.text,
+        &[
+            ("role_title", &role.title),
+            ("instructions", role.instructions.trim()),
+            ("domain", &role.domain),
+            ("detail_level_text", detail_level_text),
+            ("max_questions", &max_q),
+            ("round_number", &round),
+            ("prior_decision_count", &prior),
+            ("convergence_guidance", convergence_guidance),
+        ],
     );
-
-    let prompt = format!(
-        r#"## Organization Conventions
-{conventions}
-
-## Architecture Decision Records
-{adrs}
-
-## Codebase Context
-{codebase}
-
-## Story Description
-{story}
-
-## Decisions Already Made
-{previous}
-
-## Existing Questions (raised by earlier roles)
-{existing}
-
-Based on your {role_title} perspective:
-- Augment existing questions where you add meaningful cross-domain insight.
-- Raise 0–{max_questions} NEW questions not already covered above.
-Do NOT duplicate questions already in "Existing Questions"."#,
-        conventions = if conventions.is_empty() {
-            "None documented.".into()
-        } else {
-            conventions
-        },
-        adrs = if adrs.is_empty() {
-            "None documented.".into()
-        } else {
-            adrs
-        },
-        codebase = if codebase_context.is_empty() {
-            "No codebase context available.".into()
-        } else {
-            codebase_context.to_owned()
-        },
-        story = story_description,
-        previous = previous,
-        existing = existing,
-        role_title = role.title,
-        max_questions = max_questions,
+    let prompt = super::render(
+        &GROOMING_CONFIG.sequential_user_template.text,
+        &[
+            ("conventions", &conventions),
+            ("adrs", &adrs),
+            ("codebase", &codebase),
+            ("story", story_description),
+            ("previous", &previous),
+            ("existing", &existing),
+            ("role_title", &role.title),
+            ("max_questions", &max_q),
+        ],
     );
-
     (system, prompt)
 }
 
@@ -310,29 +162,4 @@ fn fmt_accumulated_questions(questions: &[AccumulatedQuestion<'_>]) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n\n")
-}
-
-fn filter_knowledge(knowledge: &[KnowledgeEntry], category: KnowledgeCategory) -> String {
-    let items: Vec<String> = knowledge
-        .iter()
-        .filter(|k| k.category == category)
-        .map(|k| format!("### {}\n{}", k.title, k.content))
-        .collect();
-    items.join("\n\n")
-}
-
-fn fmt_decisions(decisions: &[QaDecision]) -> String {
-    if decisions.is_empty() {
-        return "None yet.".into();
-    }
-    decisions
-        .iter()
-        .map(|d| {
-            format!(
-                "- [{}] Q: {} → A: {}",
-                d.domain, d.question_text, d.answer_text
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
 }

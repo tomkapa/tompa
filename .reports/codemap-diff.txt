@@ -1,0 +1,12 @@
+Codemap Generation Report
+Generated: 2026-03-07
+Previous version: none (initial generation)
+
+Files created:
+  codemaps/architecture.md  — Overall system architecture, data flow, auth
+  codemaps/backend.md       — Rust crates: server, agent, shared; migrations table
+  codemaps/frontend.md      — React SPA: route tree, component hierarchy, API pipeline
+  codemaps/data.md          — DB schema, enums, WebSocket message protocol
+
+Diff from previous: N/A (first run)
+Change threshold for approval: >30%

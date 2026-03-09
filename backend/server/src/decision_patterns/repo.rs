@@ -194,12 +194,15 @@ pub async fn auto_archive_low_confidence(
 }
 
 /// Fetch relevant patterns using FTS + tag overlap for prompt injection.
+/// `exclude_story_id` prevents patterns extracted from the current story from being
+/// fed back into subsequent rounds of the same session (circular self-reference).
 pub async fn fetch_relevant_patterns(
     pool: &PgPool,
     org_id: Uuid,
     project_id: Uuid,
     search_text: &str,
     tags: &[String],
+    exclude_story_id: Option<Uuid>,
 ) -> Result<Vec<DecisionPatternRow>, sqlx::Error> {
     sqlx::query_as::<_, DecisionPatternRow>(
         r#"
@@ -212,6 +215,7 @@ pub async fn fetch_relevant_patterns(
           AND superseded_by IS NULL
           AND deleted_at IS NULL
           AND confidence > 0.5
+          AND ($5::uuid IS NULL OR source_story_id IS NULL OR source_story_id != $5)
           AND (
             search_vector @@ websearch_to_tsquery('english', $3)
             OR tags && $4::text[]
@@ -224,6 +228,7 @@ pub async fn fetch_relevant_patterns(
     .bind(project_id)
     .bind(search_text)
     .bind(tags)
+    .bind(exclude_story_id)
     .fetch_all(pool)
     .await
 }

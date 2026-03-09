@@ -1,6 +1,6 @@
 use uuid::Uuid;
 
-use crate::{agents::prompts::grooming::GROOMING_ROLES, db::OrgTx, errors::ApiError};
+use crate::{agents::prompts::grooming::GROOMING_CONFIG, db::OrgTx, errors::ApiError};
 
 use super::{
     repo,
@@ -84,7 +84,7 @@ fn validate_qa_config(qa_config: &serde_json::Value) -> Result<(), ApiError> {
         );
     }
 
-    let valid_role_ids: Vec<&str> = GROOMING_ROLES.iter().map(|r| r.id).collect();
+    let valid_role_ids: Vec<&str> = GROOMING_CONFIG.roles.iter().map(|r| r.id.as_str()).collect();
     for role_id in grooming.keys() {
         if !valid_role_ids.contains(&role_id.as_str()) {
             return Err(

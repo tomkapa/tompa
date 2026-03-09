@@ -1,0 +1,18 @@
+[thresholds]
+level_1 = "Only raise questions about decisions that would be impossible or extremely expensive to reverse after implementation."
+level_2 = "Only raise questions about decisions that would require days of significant rework to change later."
+level_3 = "Raise questions about decisions that require meaningful effort to reverse or that meaningfully affect quality."
+level_4 = "Raise questions about decisions that could cause noticeable inefficiency, technical debt, or user experience degradation."
+level_5 = "Raise questions about all decisions where reasonable professionals might disagree on the best approach."
+default  = "Raise questions about decisions that require meaningful effort to reverse or that meaningfully affect quality."
+
+[convergence]
+level_1 = "At this detail level, only continue if there is a genuine blocker that makes implementation impossible without an answer."
+level_2 = "At this detail level, only ask about decisions that would require days of significant rework. Most stories need at most 4–6 total decisions."
+level_3 = "At this detail level, focus on decisions with meaningful downstream impact. Most stories need at most 8–10 total decisions."
+level_4 = "Be thorough but avoid diminishing returns. Each additional question should justify the review cost."
+level_5 = "Be comprehensive — cover all areas where reasonable professionals might disagree."
+default  = "Focus on decisions with meaningful downstream impact."
+
+[round_suffix]
+text = "This is round {round_number} — the bar for new questions is higher. Only ask if a genuinely critical gap was missed in previous rounds."

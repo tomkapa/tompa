@@ -1,0 +1,26 @@
+[
+  {
+    "id": "oauth-login",
+    "title": "Add OAuth login via Google and GitHub",
+    "type": "feature",
+    "description": "Users should be able to sign in using their Google or GitHub account instead of (or in addition to) email/password. The login page should show social login buttons. After OAuth, users land on the dashboard."
+  },
+  {
+    "id": "notifications",
+    "title": "In-app notification system",
+    "type": "feature",
+    "description": "Add a notification bell in the top nav that shows unread count. Notifications are triggered when: a story is assigned to a user, a task changes state, or a comment is posted. Users can mark notifications as read individually or all at once."
+  },
+  {
+    "id": "export-csv",
+    "title": "Export story list to CSV",
+    "type": "feature",
+    "description": "Add an export button to the stories page that downloads a CSV of all stories in the current project, including title, status, assignee, and created date."
+  },
+  {
+    "id": "data-loss-bug",
+    "title": "Story description lost on rapid save",
+    "type": "bug",
+    "description": "When a user types in the story description field and saves quickly (within 500ms of last keystroke), the description reverts to the previous value. Affects the story detail edit form. Reproducible on slow connections."
+  }
+]

@@ -124,7 +124,7 @@ function QaThread({
       <div className="relative flex-1 overflow-hidden">
         <div ref={contentRef} className="h-full overflow-y-auto">
           <div className="flex flex-col gap-5 p-5">
-            {rounds.map((round) => (
+            {rounds.filter((round) => round.questions.length > 0).map((round) => (
               <React.Fragment key={round.id}>
                 {/* Round label divider */}
                 <div className="flex items-center gap-2">
